@@ -3,10 +3,9 @@
 Engine A Dashboard v2.1
 Core Fetcher: Angel One SmartAPI (Indian Real-Time Data)
 ============================================================
-Fetches 3 Indian tickers required for Engine A scoring:
-  - Nifty 50 (index, token 99926000)
-  - India VIX (index, token 99926009)
-  - GOLDBEES (equity ETF, NSE)
+Fetches Indian indices for Engine A scoring:
+  - Nifty 50 (token 99926000)
+  - India VIX (token 99926017)
 
 Output: data/core/angel_one_indian.csv (appends one row per ticker per run)
 Run:    python fetchers/core/angel_one/fetch_angel_one_core.py
@@ -18,6 +17,13 @@ Authentication:
     ANGEL_PIN
     ANGEL_TOTP_SECRET
   Each run authenticates fresh via TOTP, then logs out.
+
+CHANGELOG:
+  May 14 2026 - Fixed India VIX token: was 99926009 (which is Bank Nifty),
+                corrected to 99926017 per official Angel One docs.
+  May 14 2026 - Removed GOLDBEES (moved to yfinance fetcher as GOLDBEES.NS).
+                ETFs work more reliably via yfinance than Angel One's
+                token-based lookup which requires instrument master sync.
 
 Design principles:
   - Sanity checks: every value bounded by reasonable range
@@ -63,10 +69,10 @@ REQUIRED_ENV_VARS = [
 
 # Tickers to fetch via Angel One LTP API
 # Format: (display_name, exchange, tradingsymbol, symboltoken, min_sane, max_sane)
+# Token reference: https://smartapi.angelone.in/ (official 120-indices list)
 TICKERS = [
-    ("Nifty 50",   "NSE", "NIFTY 50",      "99926000", 15000.0, 35000.0),
-    ("India VIX",  "NSE", "INDIA VIX",     "99926009",     5.0,    80.0),
-    ("GOLDBEES",   "NSE", "GOLDBEES-EQ",   "16086",       40.0,   200.0),
+    ("Nifty 50",   "NSE", "NIFTY 50",   "99926000", 15000.0, 35000.0),
+    ("India VIX",  "NSE", "INDIA VIX",  "99926017",     5.0,    80.0),
 ]
 
 
@@ -179,7 +185,7 @@ def fetch_one_ticker(obj: SmartConnect, name: str, exchange: str,
             note = ""
 
         return {
-            "timestamp": fetched_at,  # Angel One LTP is real-time; mark with fetch time
+            "timestamp": fetched_at,
             "ticker": tradingsymbol,
             "name": name,
             "value": round(ltp, 4),
