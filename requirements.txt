@@ -8,7 +8,8 @@
 # -------- Data Sources --------
 yfinance>=0.2.40              # Global market data (US, FX, commodities)
 smartapi-python>=1.4.0        # Angel One SmartAPI (real-time Indian data)
-logzero>=1.7.0                # Required by smartapi-python (undeclared dependency)
+logzero>=1.7.0                # Required by smartapi-python (undeclared)
+websocket-client>=1.7.0       # Required by smartapi-python (undeclared)
 pyotp>=2.9.0                  # TOTP for Angel One authentication
 nselib>=1.0.0                 # NSE India data (FII/DII, indices)
 
