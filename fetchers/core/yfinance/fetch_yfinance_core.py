@@ -1,14 +1,15 @@
 """
 ============================================================
 Engine A Dashboard v2.1
-Core Fetcher: yfinance (Global Data)
+Core Fetcher: yfinance (Global Data + GOLDBEES)
 ============================================================
-Fetches 5 global tickers required for Engine A scoring:
+Fetches global and ETF tickers required for Engine A scoring:
   - US 10Y Treasury yield (^TNX)
   - DXY US Dollar Index (DX-Y.NYB)
   - US VIX (^VIX)
   - USD/INR exchange rate (INR=X)
   - Brent Crude futures (BZ=F)
+  - GOLDBEES NSE ETF (GOLDBEES.NS) — Engine A C7 Gold sub-input
 
 Output: data/core/yfinance_global.csv (appends one row per ticker per run)
 Run:    python fetchers/core/yfinance/fetch_yfinance_core.py
@@ -24,6 +25,9 @@ Design principles:
 CHANGELOG:
   May 14 2026 - Removed scale_divisor=10 for ^TNX. yfinance now returns
                 values already in %, no scaling needed.
+  May 14 2026 - Added GOLDBEES.NS (moved from Angel One fetcher).
+                ETFs are more reliable on yfinance than Angel One's
+                token-based instrument master lookup.
 
 Last updated: May 14, 2026
 ============================================================
@@ -53,11 +57,12 @@ OUTPUT_FILE = OUTPUT_DIR / "yfinance_global.csv"
 # Format: ticker -> (display_name, min_sane_value, max_sane_value, scale_divisor)
 # scale_divisor=1 means no scaling. All yfinance values used as-is.
 TICKERS = {
-    "^TNX":     ("US 10Y Yield",     2.0,   8.0,   1),
-    "DX-Y.NYB": ("DXY",              85.0,  120.0, 1),
-    "^VIX":     ("US VIX",           8.0,   80.0,  1),
-    "INR=X":    ("USD/INR",          75.0,  100.0, 1),
-    "BZ=F":     ("Brent Crude",      30.0,  180.0, 1),
+    "^TNX":        ("US 10Y Yield",  2.0,    8.0,    1),
+    "DX-Y.NYB":    ("DXY",           85.0,   120.0,  1),
+    "^VIX":        ("US VIX",        8.0,    80.0,   1),
+    "INR=X":       ("USD/INR",       75.0,   100.0,  1),
+    "BZ=F":        ("Brent Crude",   30.0,   180.0,  1),
+    "GOLDBEES.NS": ("GOLDBEES",      40.0,   200.0,  1),
 }
 
 
@@ -180,7 +185,7 @@ def main():
         value = row["value"] if row["value"] is not None else "N/A"
         symbol = "OK " if status == "OK" else ("WARN" if status == "STALE" else "FAIL")
 
-        print(f"  [{symbol}] {name:<18} {ticker:<10} = {value}  ({status})")
+        print(f"  [{symbol}] {name:<18} {ticker:<14} = {value}  ({status})")
 
         if status == "OK":
             ok_count += 1
@@ -196,7 +201,6 @@ def main():
     print(f"[{now_ist()}] Done. Wrote {len(rows)} rows to {OUTPUT_FILE}")
 
     # Exit code: 0 if at least one fetch succeeded, 1 if all failed
-    # This lets GitHub Actions know whether to flag the run as failed
     if ok_count == 0:
         print("ERROR: All fetches failed. Exiting with code 1.")
         sys.exit(1)
