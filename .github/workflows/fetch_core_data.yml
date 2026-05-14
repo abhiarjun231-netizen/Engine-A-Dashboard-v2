@@ -1,0 +1,131 @@
+name: Fetch Core Data (yfinance + Angel One)
+
+# ============================================================
+# Engine A Dashboard v2.1 — Core Data Fetch Workflow
+# ============================================================
+# Runs yfinance_core + angel_one_core fetchers and commits
+# results to data/core/*.csv
+#
+# Triggers:
+#   1. Schedule (cron): every 15 min during NSE hours + once at 4 AM IST
+#   2. Manual: "Run workflow" button in Actions tab
+#   3. On push to main (only when fetcher code changes — for testing)
+# ============================================================
+
+on:
+  schedule:
+    # NSE trading hours: 9:00 AM – 4:00 PM IST = 03:30 – 10:30 UTC
+    # Run every 15 minutes during NSE hours, Monday–Friday
+    - cron: '*/15 3-10 * * 1-5'
+    # Daily run at 4:00 AM IST = 22:30 UTC previous day (Sun-Thu nights)
+    - cron: '30 22 * * 0-4'
+
+  workflow_dispatch:
+    # Manual trigger from Actions tab — for on-demand fresh fetches
+
+  push:
+    # Re-run automatically when fetcher code changes (for testing)
+    branches: [main]
+    paths:
+      - 'fetchers/core/**'
+      - '.github/workflows/fetch_core_data.yml'
+
+# Prevent overlapping runs — if a previous run is still going, queue this one
+concurrency:
+  group: fetch-core-data
+  cancel-in-progress: false
+
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      # ------------------------------------------------------
+      # 1. Get the repo
+      # ------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GH_PAT }}
+          fetch-depth: 1
+
+      # ------------------------------------------------------
+      # 2. Setup Python 3.11
+      # ------------------------------------------------------
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      # ------------------------------------------------------
+      # 3. Install dependencies
+      # ------------------------------------------------------
+      - name: Install requirements
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ------------------------------------------------------
+      # 4. Run yfinance core fetcher
+      # ------------------------------------------------------
+      - name: Fetch yfinance global data
+        run: python fetchers/core/yfinance/fetch_yfinance_core.py
+        continue-on-error: true  # Don't kill the workflow if this fails
+
+      # ------------------------------------------------------
+      # 5. Run Angel One core fetcher
+      # ------------------------------------------------------
+      - name: Fetch Angel One Indian data
+        env:
+          ANGEL_API_KEY:      ${{ secrets.ANGEL_API_KEY }}
+          ANGEL_CLIENT_CODE:  ${{ secrets.ANGEL_CLIENT_CODE }}
+          ANGEL_PIN:          ${{ secrets.ANGEL_PIN }}
+          ANGEL_TOTP_SECRET:  ${{ secrets.ANGEL_TOTP_SECRET }}
+        run: python fetchers/core/angel_one/fetch_angel_one_core.py
+        continue-on-error: true  # Don't kill the workflow if this fails
+
+      # ------------------------------------------------------
+      # 6. Commit new CSV rows back to repo
+      # ------------------------------------------------------
+      - name: Commit data changes
+        run: |
+          git config --local user.email "actions@github.com"
+          git config --local user.name "Engine A Auto-Fetch"
+          
+          # Pull latest changes first to avoid push conflicts
+          git pull --rebase origin main || true
+          
+          # Stage any changed CSV files
+          git add data/core/*.csv 2>/dev/null || true
+          
+          # Only commit if something changed
+          if git diff --cached --quiet; then
+            echo "No data changes to commit."
+          else
+            TIMESTAMP=$(TZ=Asia/Kolkata date +"%Y-%m-%d %H:%M:%S IST")
+            git commit -m "Auto-fetch: ${TIMESTAMP}"
+            git push origin main
+            echo "Committed and pushed new data."
+          fi
+
+      # ------------------------------------------------------
+      # 7. Show summary in workflow log
+      # ------------------------------------------------------
+      - name: Display recent data
+        if: always()
+        run: |
+          echo "=== Latest yfinance data ==="
+          if [ -f data/core/yfinance_global.csv ]; then
+            tail -6 data/core/yfinance_global.csv
+          else
+            echo "yfinance_global.csv not found"
+          fi
+          echo ""
+          echo "=== Latest Angel One data ==="
+          if [ -f data/core/angel_one_indian.csv ]; then
+            tail -4 data/core/angel_one_indian.csv
+          else
+            echo "angel_one_indian.csv not found"
+          fi
