@@ -2,3 +2,6 @@ timestamp,ticker,name,value,change_pct,fetched_at,status,note
 2026-05-14 17:35:16,NIFTY 50,Nifty 50,23689.6,1.1831,2026-05-14 17:35:16,OK,
 2026-05-14 17:35:18,INDIA VIX,India VIX,54128.95,1.2586,2026-05-14 17:35:18,STALE,"Value 54128.95 outside sane range [5.0, 80.0]"
 2026-05-14 17:35:20,GOLDBEES-EQ,GOLDBEES,,,2026-05-14 17:35:20,ERROR,API: Symbol token not found in scrip master cache for the given exchange
+2026-05-14 17:41:49,NIFTY 50,Nifty 50,23689.6,1.1831,2026-05-14 17:41:49,OK,
+2026-05-14 17:41:51,INDIA VIX,India VIX,54128.95,1.2586,2026-05-14 17:41:51,STALE,"Value 54128.95 outside sane range [5.0, 80.0]"
+2026-05-14 17:41:53,GOLDBEES-EQ,GOLDBEES,,,2026-05-14 17:41:53,ERROR,API: Symbol token not found in scrip master cache for the given exchange
