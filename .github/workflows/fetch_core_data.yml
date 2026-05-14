@@ -3,7 +3,7 @@ name: Fetch Core Data (yfinance + Angel One)
 # ============================================================
 # Engine A Dashboard v2.1 — Core Data Fetch Workflow
 # ============================================================
-# Runs yfinance_core + angel_one_core + bond scrapers
+# Runs yfinance_core + angel_one_core + scrapers
 # and commits results to data/core/*.csv
 #
 # Triggers:
@@ -87,14 +87,21 @@ jobs:
         continue-on-error: true
 
       # ------------------------------------------------------
-      # 6. Run bond yields scraper (NEW)
+      # 6. Run bond yields scraper
       # ------------------------------------------------------
       - name: Fetch bond yields (scraper)
         run: python fetchers/core/scrapers/fetch_bonds.py
         continue-on-error: true
 
       # ------------------------------------------------------
-      # 7. Commit new CSV rows back to repo
+      # 7. Run BSE market cap scraper
+      # ------------------------------------------------------
+      - name: Fetch BSE market cap (scraper)
+        run: python fetchers/core/scrapers/fetch_bse_mcap.py
+        continue-on-error: true
+
+      # ------------------------------------------------------
+      # 8. Commit new CSV rows back to repo
       # ------------------------------------------------------
       - name: Commit data changes
         run: |
@@ -118,7 +125,7 @@ jobs:
           fi
 
       # ------------------------------------------------------
-      # 8. Show summary in workflow log
+      # 9. Show summary in workflow log
       # ------------------------------------------------------
       - name: Display recent data
         if: always()
@@ -142,4 +149,11 @@ jobs:
             tail -3 data/core/bond_yields.csv
           else
             echo "bond_yields.csv not found"
+          fi
+          echo ""
+          echo "=== Latest BSE Market Cap ==="
+          if [ -f data/core/bse_mcap.csv ]; then
+            tail -2 data/core/bse_mcap.csv
+          else
+            echo "bse_mcap.csv not found"
           fi
