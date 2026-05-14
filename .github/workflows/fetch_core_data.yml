@@ -3,8 +3,8 @@ name: Fetch Core Data (yfinance + Angel One)
 # ============================================================
 # Engine A Dashboard v2.1 — Core Data Fetch Workflow
 # ============================================================
-# Runs yfinance_core + angel_one_core fetchers and commits
-# results to data/core/*.csv
+# Runs yfinance_core + angel_one_core + bond scrapers
+# and commits results to data/core/*.csv
 #
 # Triggers:
 #   1. Schedule (cron): every 15 min during NSE hours + once at 4 AM IST
@@ -72,7 +72,7 @@ jobs:
       # ------------------------------------------------------
       - name: Fetch yfinance global data
         run: python fetchers/core/yfinance/fetch_yfinance_core.py
-        continue-on-error: true  # Don't kill the workflow if this fails
+        continue-on-error: true
 
       # ------------------------------------------------------
       # 5. Run Angel One core fetcher
@@ -84,10 +84,17 @@ jobs:
           ANGEL_PIN:          ${{ secrets.ANGEL_PIN }}
           ANGEL_TOTP_SECRET:  ${{ secrets.ANGEL_TOTP_SECRET }}
         run: python fetchers/core/angel_one/fetch_angel_one_core.py
-        continue-on-error: true  # Don't kill the workflow if this fails
+        continue-on-error: true
 
       # ------------------------------------------------------
-      # 6. Commit new CSV rows back to repo
+      # 6. Run bond yields scraper (NEW)
+      # ------------------------------------------------------
+      - name: Fetch bond yields (scraper)
+        run: python fetchers/core/scrapers/fetch_bonds.py
+        continue-on-error: true
+
+      # ------------------------------------------------------
+      # 7. Commit new CSV rows back to repo
       # ------------------------------------------------------
       - name: Commit data changes
         run: |
@@ -111,21 +118,28 @@ jobs:
           fi
 
       # ------------------------------------------------------
-      # 7. Show summary in workflow log
+      # 8. Show summary in workflow log
       # ------------------------------------------------------
       - name: Display recent data
         if: always()
         run: |
           echo "=== Latest yfinance data ==="
           if [ -f data/core/yfinance_global.csv ]; then
-            tail -6 data/core/yfinance_global.csv
+            tail -7 data/core/yfinance_global.csv
           else
             echo "yfinance_global.csv not found"
           fi
           echo ""
           echo "=== Latest Angel One data ==="
           if [ -f data/core/angel_one_indian.csv ]; then
-            tail -4 data/core/angel_one_indian.csv
+            tail -3 data/core/angel_one_indian.csv
           else
             echo "angel_one_indian.csv not found"
+          fi
+          echo ""
+          echo "=== Latest Bond Yields ==="
+          if [ -f data/core/bond_yields.csv ]; then
+            tail -3 data/core/bond_yields.csv
+          else
+            echo "bond_yields.csv not found"
           fi
