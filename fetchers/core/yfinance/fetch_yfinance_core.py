@@ -21,6 +21,10 @@ Design principles:
   - Append-only: builds historical dataset over time
   - Status flagging: OK / STALE / ERROR per row
 
+CHANGELOG:
+  May 14 2026 - Removed scale_divisor=10 for ^TNX. yfinance now returns
+                values already in %, no scaling needed.
+
 Last updated: May 14, 2026
 ============================================================
 """
@@ -47,9 +51,9 @@ OUTPUT_FILE = OUTPUT_DIR / "yfinance_global.csv"
 
 # Tickers to fetch, with sanity ranges
 # Format: ticker -> (display_name, min_sane_value, max_sane_value, scale_divisor)
-# scale_divisor handles ^TNX which yfinance returns as 44.6 for 4.46%
+# scale_divisor=1 means no scaling. All yfinance values used as-is.
 TICKERS = {
-    "^TNX":     ("US 10Y Yield",     2.0,   8.0,   10),
+    "^TNX":     ("US 10Y Yield",     2.0,   8.0,   1),
     "DX-Y.NYB": ("DXY",              85.0,  120.0, 1),
     "^VIX":     ("US VIX",           8.0,   80.0,  1),
     "INR=X":    ("USD/INR",          75.0,  100.0, 1),
