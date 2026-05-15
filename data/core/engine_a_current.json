@@ -1,6 +1,6 @@
 {
   "schema_version": "v2.1",
-  "computed_at_ist": "2026-05-15 17:01:23",
+  "computed_at_ist": "2026-05-15 17:03:10",
   "score": 13,
   "max_available_today": 40,
   "max_theoretical": 100,
@@ -211,18 +211,18 @@
           "note": "US10Y +14.8 bps over 30D"
         },
         "dxy": {
-          "value": 99.08,
+          "value": 99.1,
           "score": 2,
           "max": 2,
           "status": "OK",
-          "note": "DXY 99.08"
+          "note": "DXY 99.10"
         },
         "us_vix": {
-          "value": 18.66,
+          "value": 18.61,
           "score": 2,
           "max": 3,
           "status": "OK",
-          "note": "US VIX 18.66"
+          "note": "US VIX 18.61"
         },
         "inr_direction": {
           "value": 3.06,
@@ -248,11 +248,11 @@
       "name": "Crude",
       "sub_inputs": {
         "brent_vs_6m": {
-          "value": 32.23,
+          "value": 32.33,
           "score": 0,
           "max": 5,
           "status": "OK",
-          "note": "Brent $107.92 vs 6M avg $81.62 = +32.23%"
+          "note": "Brent $108.00 vs 6M avg $81.62 = +32.33%"
         }
       },
       "score": 0,
@@ -264,10 +264,10 @@
     "nifty_50": 23643.5,
     "india_vix": 18.79,
     "us_10y": 4.461,
-    "dxy": 99.082,
-    "us_vix": 18.66,
+    "dxy": 99.101,
+    "us_vix": 18.61,
     "inr_usd": 95.82,
-    "brent_crude": 107.92,
+    "brent_crude": 108.0,
     "goldbees": 129.41,
     "gsec_10y": 7.064,
     "gsec_2y": 6.473
