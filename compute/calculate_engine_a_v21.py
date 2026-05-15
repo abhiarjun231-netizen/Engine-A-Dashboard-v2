@@ -888,17 +888,33 @@ def compute_engine_a():
             print(f"     - {item}")
     print("=" * 60)
 
+    # Map regime to guidance text for dashboard display
+    GUIDANCE_TEXT = {
+        "FULL_DEPLOY": "Maximum deployment",
+        "AGGRESSIVE":  "Lean in aggressively",
+        "ACTIVE":      "Normal deployment",
+        "CAUTIOUS":    "Selective adds only",
+        "FREEZE":      "No new equity buys",
+        "EXIT_ALL":    "Defensive only",
+    }
+    guidance = GUIDANCE_TEXT.get(regime, "—")
+
     # ---- Build output JSON ----
     output = {
         "schema_version": "v2.1",
         "computed_at_ist": now_ist(),
+        "last_compute": now_ist(),                 # alias for dashboard
         "score": total_score,
+        "max_available": total_max_available,      # alias for dashboard
         "max_available_today": total_max_available,
         "max_theoretical": total_max_possible,
         "score_pct_of_max_available": round(score_pct, 2),
         "regime": regime,
+        "equity_allocation": equity_pct,           # alias for dashboard
         "regime_equity_pct": equity_pct,
+        "guidance": guidance,                      # NEW: readable guidance
         "safety_override": override_note,
+        "pending_count": len(pending_manual),      # alias for dashboard
         "pending_manual_count": len(pending_manual),
         "stale_inputs_count": len(stale_inputs),
         "pending_manual": pending_manual,
