@@ -162,43 +162,75 @@ function parseHistoryCsv(text) {
   const dateIdx  = headers.findIndex(h => h.includes("date") || h.includes("timestamp"));
   const scoreIdx = headers.findIndex(h => h === "score");
   if (dateIdx < 0 || scoreIdx < 0) return [];
-  return lines.slice(1).map(line => {
+
+  // Parse all rows
+  const rows = lines.slice(1).map(line => {
     const cells = line.split(",");
     return {
       date: (cells[dateIdx] || "").trim().slice(0, 10),
-      score: parseFloat(cells[scoreIdx])
+      score: parseFloat(cells[scoreIdx]),
+      timestamp: (cells[dateIdx] || "").trim()
     };
-  }).filter(r => !isNaN(r.score));
+  }).filter(r => !isNaN(r.score) && r.date);
+
+  // Dedupe to one point per day: keep the LATEST entry per date
+  // (multiple cron runs per day produce multiple same-day entries; we want daily progression)
+  const byDate = {};
+  rows.forEach(r => {
+    if (!byDate[r.date] || r.timestamp > byDate[r.date].timestamp) {
+      byDate[r.date] = r;
+    }
+  });
+
+  // Sort chronologically
+  return Object.values(byDate).sort((a, b) => a.date.localeCompare(b.date));
 }
 
 // ============ RENDER: TICKER ============
-function renderTicker(auto) {
+function renderTicker(rawInputs) {
+  // Accepts either rich {value, delta_pct} or scalar values (compute file writes scalars)
   const items = [
-    { label: "Nifty 50",    key: "nifty_50",  decimals: 2 },
-    { label: "India VIX",   key: "india_vix", decimals: 2 },
-    { label: "USD/INR",     key: "inr_usd",   decimals: 2 },
-    { label: "Brent",       key: "brent",     decimals: 2, unit: "$" },
-    { label: "GoldBees",    key: "goldbees",  decimals: 2 },
-    { label: "US 10Y",      key: "us_10y",    decimals: 2, unit: "%" }
+    { label: "Nifty 50",  key: "nifty_50",  decimals: 2 },
+    { label: "India VIX", key: "india_vix", decimals: 2 },
+    { label: "USD/INR",   key: "inr_usd",   decimals: 2 },
+    { label: "Brent",     key: "brent_crude", altKey: "brent", decimals: 2, unit: "$" },
+    { label: "GoldBees",  key: "goldbees",  decimals: 2 },
+    { label: "US 10Y",    key: "us_10y",    decimals: 2, unit: "%" },
+    { label: "G-Sec 10Y", key: "gsec_10y",  decimals: 2, unit: "%" }
   ];
 
   const blocks = items.map(it => {
-    const a = auto[it.key];
-    if (!a) return "";
-    const val = (it.unit || "") + fmtNumber(a.value, it.decimals);
-    const dp = a.delta_pct;
-    let deltaClass = "flat";
-    let deltaText = "—";
-    if (typeof dp === "number") {
-      if (dp > 0.05)  deltaClass = "up";
-      if (dp < -0.05) deltaClass = "down";
-      deltaText = (dp > 0 ? "+" : "") + dp.toFixed(2) + "%";
+    let a = rawInputs[it.key];
+    if (a === undefined && it.altKey) a = rawInputs[it.altKey];
+    if (a === undefined || a === null) return "";
+
+    // Support both shapes: scalar number, or { value, delta_pct }
+    let value, deltaPct;
+    if (typeof a === "object" && a !== null) {
+      value = a.value;
+      deltaPct = a.delta_pct;
+    } else {
+      value = a;
+      deltaPct = null;
     }
+
+    if (value === null || value === undefined || isNaN(value)) return "";
+    const val = (it.unit || "") + fmtNumber(value, it.decimals);
+
+    let deltaHtml = "";
+    if (typeof deltaPct === "number" && !isNaN(deltaPct)) {
+      let deltaClass = "flat";
+      if (deltaPct > 0.05)  deltaClass = "up";
+      if (deltaPct < -0.05) deltaClass = "down";
+      const deltaText = (deltaPct > 0 ? "+" : "") + deltaPct.toFixed(2) + "%";
+      deltaHtml = `<span class="ticker-delta ${deltaClass}">${escapeHtml(deltaText)}</span>`;
+    }
+
     return `
       <span class="ticker-item">
         <span class="ticker-label">${escapeHtml(it.label)}</span>
         <span class="ticker-value">${escapeHtml(val)}</span>
-        <span class="ticker-delta ${deltaClass}">${escapeHtml(deltaText)}</span>
+        ${deltaHtml}
       </span>
       <span style="color: var(--ink-500); opacity: 0.4;">·</span>
     `;
@@ -208,21 +240,32 @@ function renderTicker(auto) {
   $("#ticker-track").innerHTML = blocks + blocks;
 }
 
+// Map regime to short guidance text (fallback if compute file doesn't provide)
+const REGIME_GUIDANCE = {
+  FULL_DEPLOY: "Maximum deployment",
+  AGGRESSIVE:  "Lean in aggressively",
+  ACTIVE:      "Normal deployment",
+  CAUTIOUS:    "Selective adds only",
+  FREEZE:      "No new equity buys",
+  EXIT_ALL:    "Defensive only"
+};
+
 // ============ RENDER: HERO ============
 function renderHero(data) {
   const score = data.score ?? 0;
-  const max   = data.max_available ?? 100;
+  // Read keys in priority order: new compute keys first, then legacy
+  const max   = data.max_available_today ?? data.max_available ?? 100;
   const regime = (data.regime || "loading").toUpperCase();
-  const allocation = data.equity_allocation ?? 0;
+  const allocation = data.regime_equity_pct ?? data.equity_allocation ?? 0;
+  const lastCompute = data.computed_at_ist || data.last_compute || "—";
+  const guidance = data.guidance || REGIME_GUIDANCE[regime] || data.safety_override || "—";
 
   // If this is a refresh (not first load), smoothly transition from previous score
   if (PREV_STATE.score !== null && PREV_STATE.score !== score) {
     animateCounter($("#score-value"), score, 800, PREV_STATE.score);
   } else if (PREV_STATE.score === null) {
-    // First load: count up from 0
     animateCounter($("#score-value"), score, 1400, 0);
   } else {
-    // No change
     $("#score-value").textContent = score;
   }
 
@@ -238,26 +281,25 @@ function renderHero(data) {
   // Regime change shimmer
   if (PREV_STATE.regime && PREV_STATE.regime !== regime && previousRegime !== "loading") {
     badge.classList.remove("shimmer");
-    void badge.offsetWidth; // force reflow
+    void badge.offsetWidth;
     badge.classList.add("shimmer");
     setTimeout(() => badge.classList.remove("shimmer"), 1800);
   }
 
-  $("#regime-guidance").textContent = data.guidance || "—";
+  $("#regime-guidance").textContent = guidance;
   $("#schema-version").textContent = data.schema_version || "v2.1";
 
   $("#meta-date").textContent = getCurrentDateLine();
-  $("#footer-compute").textContent = data.last_compute || "—";
+  $("#footer-compute").textContent = lastCompute;
   $("#footer-schema").textContent  = data.schema_version || "v2.1";
 
-  // Save state for next refresh comparison
   PREV_STATE = { score, regime };
 }
 
 // ============ RENDER: PENDING ============
 function renderPending(data) {
   const banner = $("#pending-banner");
-  const count = data.pending_count ?? 0;
+  const count = data.pending_manual_count ?? data.pending_count ?? 0;
   if (count > 0) {
     $("#pending-count-text").textContent =
       count === 1 ? "1 input pending manual entry" : `${count} inputs pending manual entry`;
@@ -493,14 +535,49 @@ function renderHistory(history, animate = true) {
   const empty = $("#history-empty");
   if (!svg) return;
 
-  if (!history || history.length < 2) {
+  // Empty history check FIRST (before any data manipulation)
+  if (!history || history.length < 1) {
     svg.innerHTML = "";
     empty.style.display = "flex";
+    empty.textContent = "Building history. Each daily compute appends a point — check back after the next NSE session.";
     return;
   }
-  empty.style.display = "none";
 
+  // Now safe to slice
   const data = history.slice(-30);
+
+  // If only 1 day of data: show single centered point instead of "building history"
+  if (data.length === 1) {
+    const W = 600, H = 240;
+    const padX = 30, padY = 20;
+    const x = W / 2;
+    const y = padY + (1 - data[0].score / 100) * (H - padY * 2);
+
+    const bands = [
+      { cls: "hist-band-freeze",     from: 0,   to: 25  },
+      { cls: "hist-band-cautious",   from: 25,  to: 35  },
+      { cls: "hist-band-active",     from: 35,  to: 65  },
+      { cls: "hist-band-aggressive", from: 65,  to: 100 }
+    ];
+    const yScale = (score) => padY + (1 - score / 100) * (H - padY * 2);
+    const bandRects = bands.map(b => {
+      const y1 = yScale(b.to), y2 = yScale(b.from);
+      return `<rect class="${b.cls}" x="${padX}" y="${y1}" width="${W - padX * 2}" height="${y2 - y1}"/>`;
+    }).join("");
+    const yLabels = [0, 25, 50, 75, 100].map(v =>
+      `<text class="hist-axis-label" x="${padX - 4}" y="${yScale(v).toFixed(1)}" text-anchor="end" dominant-baseline="middle">${v}</text>`
+    ).join("");
+
+    svg.innerHTML = bandRects + yLabels + `
+      <circle class="hist-point" cx="${x}" cy="${y.toFixed(1)}" r="5"/>
+      <text class="hist-axis-label" x="${x}" y="${H - 4}" text-anchor="middle">${data[0].date}</text>
+      <text x="${x}" y="${(y - 12).toFixed(1)}" text-anchor="middle" style="font-family:var(--font-display); font-style:italic; font-weight:500; font-size:14px; fill:var(--ink-900);">${data[0].score}</text>
+    `;
+    empty.style.display = "none";
+    return;
+  }
+
+  empty.style.display = "none";
 
   const W = 600, H = 240;
   const padX = 30, padY = 20;
@@ -536,10 +613,12 @@ function renderHistory(history, animate = true) {
 
   const firstDate = data[0].date.slice(5);
   const lastDate  = data[data.length - 1].date.slice(5);
-  const xLabels = `
-    <text class="hist-axis-label" x="${padX}" y="${H - 4}" text-anchor="start">${firstDate}</text>
-    <text class="hist-axis-label" x="${W - padX}" y="${H - 4}" text-anchor="end">${lastDate}</text>
-  `;
+  const xLabels = firstDate === lastDate
+    ? `<text class="hist-axis-label" x="${W/2}" y="${H - 4}" text-anchor="middle">${firstDate}</text>`
+    : `
+      <text class="hist-axis-label" x="${padX}" y="${H - 4}" text-anchor="start">${firstDate}</text>
+      <text class="hist-axis-label" x="${W - padX}" y="${H - 4}" text-anchor="end">${lastDate}</text>
+    `;
 
   svg.innerHTML = bandRects + yLabels + `<path id="hist-line-path" class="hist-line" d="${linePath}"/>` + dots + xLabels;
 
@@ -598,7 +677,7 @@ async function init() {
 
   // Render
   renderHero(data);
-  renderTicker(data.auto_inputs || {});
+  renderTicker(data.raw_inputs || data.auto_inputs || {});
   renderPending(data);
   renderComponents(data);
   renderRadar(data);
@@ -612,12 +691,12 @@ setInterval(async () => {
   try {
     const { data } = await fetchData();
     const history = await fetchHistory();
-    renderHero(data);  // score/regime animate only if changed
-    renderTicker(data.auto_inputs || {});
+    renderHero(data);
+    renderTicker(data.raw_inputs || data.auto_inputs || {});
     renderPending(data);
     renderComponents(data);
-    renderRadar(data, false);   // don't re-animate radar on refresh
-    renderHistory(history, false);  // don't re-animate history on refresh
+    renderRadar(data, false);
+    renderHistory(history, false);
   } catch (e) {
     // silent
   }
