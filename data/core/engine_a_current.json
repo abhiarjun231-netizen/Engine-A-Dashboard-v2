@@ -1,13 +1,14 @@
 {
   "schema_version": "v2.1",
-  "computed_at_ist": "2026-05-15 15:06:15",
-  "score": 11,
-  "max_available_today": 37,
+  "computed_at_ist": "2026-05-15 17:01:23",
+  "score": 13,
+  "max_available_today": 40,
   "max_theoretical": 100,
-  "score_pct_of_max_available": 29.73,
+  "score_pct_of_max_available": 32.5,
   "regime": "FREEZE",
   "regime_equity_pct": 25,
-  "pending_manual_count": 13,
+  "safety_override": null,
+  "pending_manual_count": 12,
   "stale_inputs_count": 0,
   "pending_manual": [
     "C1_valuation.yield_gap",
@@ -19,7 +20,6 @@
     "C5_flows.fii_30d",
     "C5_flows.dii_30d",
     "C5_flows.sip_yoy",
-    "C6_macro_india.rbi_stance",
     "C6_macro_india.cpi_yoy",
     "C6_macro_india.pmi_mfg",
     "C6_macro_india.gst_yoy"
@@ -35,21 +35,21 @@
           "score": null,
           "max": 10,
           "status": "PENDING_MANUAL",
-          "note": "Nifty PE manual entry needed"
+          "note": "Nifty PE TTM (drives yield gap) \u2014 enter via dashboard Admin tab"
         },
         "nifty_pe_pctile": {
           "value": null,
           "score": null,
           "max": 6,
           "status": "PENDING_MANUAL",
-          "note": "Nifty PE %ile \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "Nifty PE 10Y percentile \u2014 enter via dashboard Admin tab"
         },
         "mcap_gdp_pctile": {
           "value": null,
           "score": null,
           "max": 6,
           "status": "PENDING_MANUAL",
-          "note": "MCap/GDP %ile \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "MCap/GDP 20Y percentile \u2014 enter via dashboard Admin tab"
         }
       },
       "score": 0,
@@ -65,21 +65,21 @@
           "score": null,
           "max": 8,
           "status": "PENDING_MANUAL",
-          "note": "AAA-GSec spread %ile \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "AAA-GSec spread 5Y percentile \u2014 enter via dashboard Admin tab"
         },
         "yield_curve_10y_2y": {
-          "value": 62.5,
+          "value": 59.1,
           "score": 3,
           "max": 3,
           "status": "OK",
-          "note": "10Y 7.098% - 2Y 6.473% = +62.5 bps"
+          "note": "10Y 7.064% - 2Y 6.473% = +59.1 bps"
         },
         "credit_growth_yoy": {
           "value": null,
           "score": null,
           "max": 3,
           "status": "PENDING_MANUAL",
-          "note": "Bank credit growth YoY \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "Bank credit growth YoY \u2014 enter via dashboard Admin tab"
         }
       },
       "score": 3,
@@ -91,18 +91,18 @@
       "name": "Trend & Breadth",
       "sub_inputs": {
         "nifty_vs_200dma": {
-          "value": -5.45,
+          "value": -5.56,
           "score": 0,
           "max": 7,
           "status": "OK",
-          "note": "Nifty 23671 vs 200DMA 25035 = -5.45%"
+          "note": "Nifty 23644 vs 200DMA 25035 = -5.56%"
         },
         "pct_above_200dma": {
           "value": null,
           "score": null,
           "max": 6,
           "status": "PENDING_MANUAL",
-          "note": "% Nifty 500 above 200 DMA \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "% Nifty 500 above 200 DMA \u2014 enter via dashboard Admin tab"
         }
       },
       "score": 0,
@@ -114,18 +114,18 @@
       "name": "Volatility",
       "sub_inputs": {
         "india_vix_pctile": {
-          "value": 83.7,
+          "value": 83.6,
           "score": 0,
           "max": 6,
           "status": "OK",
-          "note": "VIX 18.75 = 83.7th percentile of 5Y"
+          "note": "VIX 18.79 = 83.6th percentile of 5Y"
         },
         "vix_vs_30d_avg": {
-          "value": -3.08,
+          "value": -2.88,
           "score": 2,
           "max": 4,
           "status": "OK",
-          "note": "VIX 18.75 vs 30D avg 19.35 = -3.08%"
+          "note": "VIX 18.79 vs 30D avg 19.35 = -2.88%"
         }
       },
       "score": 2,
@@ -141,21 +141,21 @@
           "score": null,
           "max": 5,
           "status": "PENDING_MANUAL",
-          "note": "FII 30D net flow \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "FII 30D net flow \u2014 enter via dashboard Admin tab"
         },
         "dii_30d": {
           "value": null,
           "score": null,
           "max": 4,
           "status": "PENDING_MANUAL",
-          "note": "DII 30D net flow \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "DII 30D net flow \u2014 enter via dashboard Admin tab"
         },
         "sip_yoy": {
           "value": null,
           "score": null,
           "max": 3,
           "status": "PENDING_MANUAL",
-          "note": "SIP YoY% \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "SIP YoY % \u2014 enter via dashboard Admin tab"
         }
       },
       "score": 0,
@@ -167,37 +167,37 @@
       "name": "Macro India",
       "sub_inputs": {
         "rbi_stance": {
-          "value": null,
-          "score": null,
+          "value": "Neutral",
+          "score": 2,
           "max": 3,
-          "status": "PENDING_MANUAL",
-          "note": "RBI stance \u2014 enter via dashboard (Tier 4 monthly)"
+          "status": "OK",
+          "note": "RBI stance: Neutral"
         },
         "cpi_yoy": {
           "value": null,
           "score": null,
           "max": 3,
           "status": "PENDING_MANUAL",
-          "note": "CPI YoY direction \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "CPI YoY direction \u2014 enter via dashboard Admin tab"
         },
         "pmi_mfg": {
           "value": null,
           "score": null,
           "max": 3,
           "status": "PENDING_MANUAL",
-          "note": "Manufacturing PMI \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "Manufacturing PMI \u2014 enter via dashboard Admin tab"
         },
         "gst_yoy": {
           "value": null,
           "score": null,
           "max": 3,
           "status": "PENDING_MANUAL",
-          "note": "GST YoY% \u2014 enter via dashboard (Tier 4 monthly)"
+          "note": "GST YoY % \u2014 enter via dashboard Admin tab"
         }
       },
-      "score": 0,
-      "max_available": 0,
-      "pct_of_max_available": 0
+      "score": 2,
+      "max_available": 3,
+      "pct_of_max_available": 66.7
     },
     "C7_global_cross_asset": {
       "weight": 12,
@@ -211,32 +211,32 @@
           "note": "US10Y +14.8 bps over 30D"
         },
         "dxy": {
-          "value": 99.24,
+          "value": 99.08,
           "score": 2,
           "max": 2,
           "status": "OK",
-          "note": "DXY 99.24"
+          "note": "DXY 99.08"
         },
         "us_vix": {
-          "value": 18.76,
+          "value": 18.66,
           "score": 2,
           "max": 3,
           "status": "OK",
-          "note": "US VIX 18.76"
+          "note": "US VIX 18.66"
         },
         "inr_direction": {
-          "value": 3.33,
+          "value": 3.06,
           "score": 0,
           "max": 2,
           "status": "OK",
-          "note": "INR/USD +3.33% over 30D (positive = INR weaker)"
+          "note": "INR/USD +3.06% over 30D (positive = INR weaker)"
         },
         "gold_inr_vs_6m": {
-          "value": 7.29,
+          "value": 7.19,
           "score": 1,
           "max": 3,
           "status": "OK",
-          "note": "GOLDBEES 129.54 vs 6M avg 120.74 = +7.29%"
+          "note": "GOLDBEES 129.41 vs 6M avg 120.74 = +7.19%"
         }
       },
       "score": 6,
@@ -248,11 +248,11 @@
       "name": "Crude",
       "sub_inputs": {
         "brent_vs_6m": {
-          "value": 33.8,
+          "value": 32.23,
           "score": 0,
           "max": 5,
           "status": "OK",
-          "note": "Brent $109.22 vs 6M avg $81.63 = +33.80%"
+          "note": "Brent $107.92 vs 6M avg $81.62 = +32.23%"
         }
       },
       "score": 0,
@@ -261,15 +261,18 @@
     }
   },
   "raw_inputs": {
-    "nifty_50": 23670.65,
-    "india_vix": 18.75,
+    "nifty_50": 23643.5,
+    "india_vix": 18.79,
     "us_10y": 4.461,
-    "dxy": 99.236,
-    "us_vix": 18.76,
-    "inr_usd": 96.067,
-    "brent_crude": 109.22,
-    "goldbees": 129.54,
-    "gsec_10y": 7.098,
+    "dxy": 99.082,
+    "us_vix": 18.66,
+    "inr_usd": 95.82,
+    "brent_crude": 107.92,
+    "goldbees": 129.41,
+    "gsec_10y": 7.064,
     "gsec_2y": 6.473
-  }
+  },
+  "manual_inputs_loaded": [
+    "rbi_stance"
+  ]
 }
