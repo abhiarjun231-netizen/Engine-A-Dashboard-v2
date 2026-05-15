@@ -94,7 +94,7 @@ MANUAL_FIELDS = [
     {
         "key": "nifty_pe_pctile",
         "label": "Nifty PE Percentile (10Y, %)",
-        "type": "slider",
+        "type": "number",
         "min": 0, "max": 100, "step": 1, "default": 50,
         "help": "10-year historical percentile of current PE. Low = cheap.",
         "cadence": "Monthly",
@@ -104,7 +104,7 @@ MANUAL_FIELDS = [
     {
         "key": "mcap_gdp_pctile",
         "label": "MCap/GDP Percentile (20Y, %)",
-        "type": "slider",
+        "type": "number",
         "min": 0, "max": 100, "step": 1, "default": 50,
         "help": "20Y percentile of total India MCap / nominal GDP.",
         "cadence": "Monthly",
@@ -114,7 +114,7 @@ MANUAL_FIELDS = [
     {
         "key": "aaa_spread_pctile",
         "label": "AAA-GSec Spread Percentile (5Y, %)",
-        "type": "slider",
+        "type": "number",
         "min": 0, "max": 100, "step": 1, "default": 50,
         "help": "5Y percentile of AAA bond yield minus G-Sec. Tight = healthy.",
         "cadence": "Monthly",
@@ -134,7 +134,7 @@ MANUAL_FIELDS = [
     {
         "key": "pct_above_200dma",
         "label": "% Nifty 500 above 200 DMA",
-        "type": "slider",
+        "type": "number",
         "min": 0, "max": 100, "step": 1, "default": 50,
         "help": "Breadth. >70% = broad strength.",
         "cadence": "Weekly",
@@ -530,10 +530,16 @@ def render_field(field_cfg, current_value, current_ts):
         )
 
     if ftype == "number":
-        default = float(current_value) if current_value not in (None, "", "nan") else field_cfg["default"]
-        try:
-            default = float(default)
-        except (ValueError, TypeError):
+        # Auto-detect int vs float mode from config (Streamlit requires all args same type)
+        is_int_mode = isinstance(field_cfg["step"], int) and isinstance(field_cfg["default"], int)
+        coerce = int if is_int_mode else float
+
+        if current_value not in (None, "", "nan"):
+            try:
+                default = coerce(float(current_value))
+            except (ValueError, TypeError):
+                default = field_cfg["default"]
+        else:
             default = field_cfg["default"]
         # Clamp default within bounds
         default = max(field_cfg["min"], min(field_cfg["max"], default))
