@@ -25,3 +25,5 @@ timestamp,ticker,name,value,change_pct,fetched_at,status,note
 2026-05-15 12:05:30,india-2-year-bond-yield,India 2Y G-Sec,6.411,,2026-05-15 12:05:30,OK,
 2026-05-15 14:46:58,india-10-year-bond-yield,India 10Y G-Sec,7.079,,2026-05-15 14:46:58,OK,
 2026-05-15 14:47:02,india-2-year-bond-yield,India 2Y G-Sec,6.473,,2026-05-15 14:47:02,OK,
+2026-05-15 15:06:12,india-10-year-bond-yield,India 10Y G-Sec,7.098,,2026-05-15 15:06:12,OK,
+2026-05-15 15:06:13,india-2-year-bond-yield,India 2Y G-Sec,6.473,,2026-05-15 15:06:13,OK,
