@@ -3,7 +3,7 @@ name: Fetch Core Data (yfinance + Angel One)
 # ============================================================
 # Engine A Dashboard v2.1 — Core Data Fetch Workflow
 # ============================================================
-# Runs yfinance_core + angel_one_core + bond scraper
+# Runs yfinance_core + angel_one_core + scrapers
 # and commits results to data/core/*.csv
 #
 # Triggers:
@@ -12,7 +12,6 @@ name: Fetch Core Data (yfinance + Angel One)
 #   3. On push to main (only when fetcher code changes — for testing)
 #
 # NOTE: BSE MCap moved to Tier 4 manual monthly input (Step 9 dashboard).
-# Total India MCap moves slowly enough that monthly cadence is correct.
 # ============================================================
 
 on:
@@ -97,7 +96,14 @@ jobs:
         continue-on-error: true
 
       # ------------------------------------------------------
-      # 7. Commit new CSV rows back to repo
+      # 7. Run Bharat Bond YTM scraper (AAA PSU proxy)
+      # ------------------------------------------------------
+      - name: Fetch Bharat Bond YTMs (scraper)
+        run: python fetchers/core/scrapers/fetch_bharat_bond.py
+        continue-on-error: true
+
+      # ------------------------------------------------------
+      # 8. Commit new CSV rows back to repo
       # ------------------------------------------------------
       - name: Commit data changes
         run: |
@@ -121,7 +127,7 @@ jobs:
           fi
 
       # ------------------------------------------------------
-      # 8. Show summary in workflow log
+      # 9. Show summary in workflow log
       # ------------------------------------------------------
       - name: Display recent data
         if: always()
@@ -145,4 +151,11 @@ jobs:
             tail -3 data/core/bond_yields.csv
           else
             echo "bond_yields.csv not found"
+          fi
+          echo ""
+          echo "=== Latest Bharat Bond YTMs ==="
+          if [ -f data/core/bharat_bond_ytm.csv ]; then
+            tail -5 data/core/bharat_bond_ytm.csv
+          else
+            echo "bharat_bond_ytm.csv not found"
           fi
