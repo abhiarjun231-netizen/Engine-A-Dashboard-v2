@@ -1,0 +1,275 @@
+{
+  "schema_version": "v2.1",
+  "computed_at_ist": "2026-05-15 12:03:54",
+  "score": 11,
+  "max_available_today": 37,
+  "max_theoretical": 100,
+  "score_pct_of_max_available": 29.73,
+  "regime": "FREEZE",
+  "regime_equity_pct": 25,
+  "pending_manual_count": 13,
+  "stale_inputs_count": 0,
+  "pending_manual": [
+    "C1_valuation.yield_gap",
+    "C1_valuation.nifty_pe_pctile",
+    "C1_valuation.mcap_gdp_pctile",
+    "C2_credit_rates.aaa_spread_pctile",
+    "C2_credit_rates.credit_growth_yoy",
+    "C3_trend_breadth.pct_above_200dma",
+    "C5_flows.fii_30d",
+    "C5_flows.dii_30d",
+    "C5_flows.sip_yoy",
+    "C6_macro_india.rbi_stance",
+    "C6_macro_india.cpi_yoy",
+    "C6_macro_india.pmi_mfg",
+    "C6_macro_india.gst_yoy"
+  ],
+  "stale_inputs": [],
+  "components": {
+    "C1_valuation": {
+      "weight": 22,
+      "name": "Valuation",
+      "sub_inputs": {
+        "yield_gap": {
+          "value": null,
+          "score": null,
+          "max": 10,
+          "status": "PENDING_MANUAL",
+          "note": "Nifty PE manual entry needed"
+        },
+        "nifty_pe_pctile": {
+          "value": null,
+          "score": null,
+          "max": 6,
+          "status": "PENDING_MANUAL",
+          "note": "Nifty PE %ile \u2014 enter via dashboard (Tier 4 monthly)"
+        },
+        "mcap_gdp_pctile": {
+          "value": null,
+          "score": null,
+          "max": 6,
+          "status": "PENDING_MANUAL",
+          "note": "MCap/GDP %ile \u2014 enter via dashboard (Tier 4 monthly)"
+        }
+      },
+      "score": 0,
+      "max_available": 0,
+      "pct_of_max_available": 0
+    },
+    "C2_credit_rates": {
+      "weight": 14,
+      "name": "Credit & Rates",
+      "sub_inputs": {
+        "aaa_spread_pctile": {
+          "value": null,
+          "score": null,
+          "max": 8,
+          "status": "PENDING_MANUAL",
+          "note": "AAA-GSec spread %ile \u2014 enter via dashboard (Tier 4 monthly)"
+        },
+        "yield_curve_10y_2y": {
+          "value": 66.4,
+          "score": 3,
+          "max": 3,
+          "status": "OK",
+          "note": "10Y 7.075% - 2Y 6.411% = +66.4 bps"
+        },
+        "credit_growth_yoy": {
+          "value": null,
+          "score": null,
+          "max": 3,
+          "status": "PENDING_MANUAL",
+          "note": "Bank credit growth YoY \u2014 enter via dashboard (Tier 4 monthly)"
+        }
+      },
+      "score": 3,
+      "max_available": 3,
+      "pct_of_max_available": 100.0
+    },
+    "C3_trend_breadth": {
+      "weight": 13,
+      "name": "Trend & Breadth",
+      "sub_inputs": {
+        "nifty_vs_200dma": {
+          "value": -5.14,
+          "score": 0,
+          "max": 7,
+          "status": "OK",
+          "note": "Nifty 23748 vs 200DMA 25036 = -5.14%"
+        },
+        "pct_above_200dma": {
+          "value": null,
+          "score": null,
+          "max": 6,
+          "status": "PENDING_MANUAL",
+          "note": "% Nifty 500 above 200 DMA \u2014 enter via dashboard (Tier 4 monthly)"
+        }
+      },
+      "score": 0,
+      "max_available": 7,
+      "pct_of_max_available": 0.0
+    },
+    "C4_volatility": {
+      "weight": 10,
+      "name": "Volatility",
+      "sub_inputs": {
+        "india_vix_pctile": {
+          "value": 82.2,
+          "score": 0,
+          "max": 6,
+          "status": "OK",
+          "note": "VIX 18.47 = 82.2th percentile of 5Y"
+        },
+        "vix_vs_30d_avg": {
+          "value": -4.48,
+          "score": 2,
+          "max": 4,
+          "status": "OK",
+          "note": "VIX 18.47 vs 30D avg 19.34 = -4.48%"
+        }
+      },
+      "score": 2,
+      "max_available": 10,
+      "pct_of_max_available": 20.0
+    },
+    "C5_flows": {
+      "weight": 12,
+      "name": "Flows",
+      "sub_inputs": {
+        "fii_30d": {
+          "value": null,
+          "score": null,
+          "max": 5,
+          "status": "PENDING_MANUAL",
+          "note": "FII 30D net flow \u2014 enter via dashboard (Tier 4 monthly)"
+        },
+        "dii_30d": {
+          "value": null,
+          "score": null,
+          "max": 4,
+          "status": "PENDING_MANUAL",
+          "note": "DII 30D net flow \u2014 enter via dashboard (Tier 4 monthly)"
+        },
+        "sip_yoy": {
+          "value": null,
+          "score": null,
+          "max": 3,
+          "status": "PENDING_MANUAL",
+          "note": "SIP YoY% \u2014 enter via dashboard (Tier 4 monthly)"
+        }
+      },
+      "score": 0,
+      "max_available": 0,
+      "pct_of_max_available": 0
+    },
+    "C6_macro_india": {
+      "weight": 12,
+      "name": "Macro India",
+      "sub_inputs": {
+        "rbi_stance": {
+          "value": null,
+          "score": null,
+          "max": 3,
+          "status": "PENDING_MANUAL",
+          "note": "RBI stance \u2014 enter via dashboard (Tier 4 monthly)"
+        },
+        "cpi_yoy": {
+          "value": null,
+          "score": null,
+          "max": 3,
+          "status": "PENDING_MANUAL",
+          "note": "CPI YoY direction \u2014 enter via dashboard (Tier 4 monthly)"
+        },
+        "pmi_mfg": {
+          "value": null,
+          "score": null,
+          "max": 3,
+          "status": "PENDING_MANUAL",
+          "note": "Manufacturing PMI \u2014 enter via dashboard (Tier 4 monthly)"
+        },
+        "gst_yoy": {
+          "value": null,
+          "score": null,
+          "max": 3,
+          "status": "PENDING_MANUAL",
+          "note": "GST YoY% \u2014 enter via dashboard (Tier 4 monthly)"
+        }
+      },
+      "score": 0,
+      "max_available": 0,
+      "pct_of_max_available": 0
+    },
+    "C7_global_cross_asset": {
+      "weight": 12,
+      "name": "Global Cross-Asset",
+      "sub_inputs": {
+        "us_10y_direction": {
+          "value": 14.8,
+          "score": 1,
+          "max": 2,
+          "status": "OK",
+          "note": "US10Y +14.8 bps over 30D"
+        },
+        "dxy": {
+          "value": 99.14,
+          "score": 2,
+          "max": 2,
+          "status": "OK",
+          "note": "DXY 99.14"
+        },
+        "us_vix": {
+          "value": 17.26,
+          "score": 2,
+          "max": 3,
+          "status": "OK",
+          "note": "US VIX 17.26"
+        },
+        "inr_direction": {
+          "value": 3.19,
+          "score": 0,
+          "max": 2,
+          "status": "OK",
+          "note": "INR/USD +3.19% over 30D (positive = INR weaker)"
+        },
+        "gold_inr_vs_6m": {
+          "value": 7.36,
+          "score": 1,
+          "max": 3,
+          "status": "OK",
+          "note": "GOLDBEES 129.62 vs 6M avg 120.74 = +7.36%"
+        }
+      },
+      "score": 6,
+      "max_available": 12,
+      "pct_of_max_available": 50.0
+    },
+    "C8_crude": {
+      "weight": 5,
+      "name": "Crude",
+      "sub_inputs": {
+        "brent_vs_6m": {
+          "value": 31.74,
+          "score": 0,
+          "max": 5,
+          "status": "OK",
+          "note": "Brent $107.52 vs 6M avg $81.61 = +31.74%"
+        }
+      },
+      "score": 0,
+      "max_available": 5,
+      "pct_of_max_available": 0.0
+    }
+  },
+  "raw_inputs": {
+    "nifty_50": 23747.75,
+    "india_vix": 18.47,
+    "us_10y": 4.461,
+    "dxy": 99.138,
+    "us_vix": 17.26,
+    "inr_usd": 95.935,
+    "brent_crude": 107.52,
+    "goldbees": 129.62,
+    "gsec_10y": 7.075,
+    "gsec_2y": 6.411
+  }
+}
