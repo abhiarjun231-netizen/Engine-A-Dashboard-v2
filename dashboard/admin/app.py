@@ -1,21 +1,16 @@
 """
-Engine A v2.1 Admin Dashboard - Step 9A (Read-Only)
-====================================================
-Streamlit app that reads data/core/engine_a_current.json and displays:
-- Score + regime + equity % (hero card)
-- 8 component breakdown with progress bars
-- Sub-inputs table per component (expandable)
-- Pending manual inputs (highlighted)
-- Raw market data (auto-fetched)
-- Auto-refresh
-
-No write capability. That comes in Step 9B (manual input form).
+Engine A v2.1 Admin Dashboard - Step 9A (Read-Only) - v2 theme-agnostic
+========================================================================
+Theme-agnostic update:
+- Hero card and sub-input cards are SELF-CONTAINED with explicit
+  background + text colors (white bg + dark text). Readable regardless
+  of whether Streamlit Cloud renders light or dark theme.
+- Component headers and captions use Streamlit native markdown so they
+  adapt to whichever theme is active.
+- No reliance on .streamlit/config.toml theme override.
 
 Run locally:    streamlit run dashboard/admin/app.py
 Deploy:         share.streamlit.io -> entry point: dashboard/admin/app.py
-
-Author:         Engine A v2.1 build
-Schema:         v2.1
 """
 
 import json
@@ -26,12 +21,11 @@ from streamlit_autorefresh import st_autorefresh
 
 
 # =============================================================================
-# CONFIG  (change constants here, nothing else)
+# CONFIG
 # =============================================================================
-REFRESH_INTERVAL_SEC = 300                     # 5 minutes. Change to 60 for 1-min.
+REFRESH_INTERVAL_SEC = 300                     # 5 minutes
 JSON_RELATIVE_PATH = "data/core/engine_a_current.json"
 
-# Map regime -> (display name, color, one-liner)
 REGIME_INFO = {
     "FULL_DEPLOY": ("FULL DEPLOY", "#15803d", "Maximum allocation"),
     "AGGRESSIVE":  ("AGGRESSIVE",  "#65a30d", "Full deployment"),
@@ -41,7 +35,6 @@ REGIME_INFO = {
     "EXIT_ALL":    ("EXIT ALL",    "#7f1d1d", "Sell everything"),
 }
 
-# Map status -> color (used for sub-input border accent)
 STATUS_COLOR = {
     "OK":             "#15803d",
     "PENDING_MANUAL": "#737373",
@@ -60,13 +53,12 @@ STATUS_LABEL = {
 # =============================================================================
 # PATHS
 # =============================================================================
-# This file is at dashboard/admin/app.py -- repo root is two parents up.
 REPO_ROOT = Path(__file__).resolve().parents[2]
 JSON_PATH = REPO_ROOT / JSON_RELATIVE_PATH
 
 
 # =============================================================================
-# DATA LOADING (no caching -- file read is cheap, always want fresh)
+# DATA LOADING
 # =============================================================================
 def load_engine_a_data(path):
     """Return (data_dict, error_string).  Either data or error will be None."""
@@ -85,7 +77,8 @@ def load_engine_a_data(path):
 # RENDER HELPERS
 # =============================================================================
 def render_hero(data):
-    """Top card -- score, regime, equity %, one-liner."""
+    """Self-contained white card -- score, regime, equity %, one-liner.
+    Explicit bg + text colors so it renders correctly in any theme."""
     score        = data.get("score", 0)
     max_avail    = data.get("max_available_today", 0)
     max_theory   = data.get("max_theoretical", 100)
@@ -100,35 +93,36 @@ def render_hero(data):
     st.markdown(
         f"""
         <div style="
-            background: linear-gradient(135deg, {color}15 0%, {color}05 100%);
+            background: #ffffff;
+            border: 1px solid #e5e5e5;
             border-left: 6px solid {color};
             padding: 22px 24px;
             border-radius: 12px;
             margin-bottom: 16px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+            box-shadow: 0 1px 3px rgba(0,0,0,0.06);
         ">
-            <div style="font-size: 12px; color: #525252; letter-spacing: 1.5px;
+            <div style="color: #525252; font-size: 12px; letter-spacing: 1.5px;
                         text-transform: uppercase; margin-bottom: 6px; font-weight: 600;">
                 Engine A v2.1 &middot; Current State
             </div>
-            <div style="font-size: 52px; font-weight: 700; color: #171717;
+            <div style="color: #171717; font-size: 52px; font-weight: 700;
                         line-height: 1.1; margin: 6px 0;">
                 {score}
-                <span style="font-size: 24px; color: #737373; font-weight: 500;">
+                <span style="color: #737373; font-size: 24px; font-weight: 500;">
                     / {max_avail}
                 </span>
             </div>
-            <div style="font-size: 13px; color: #525252; margin-bottom: 14px;">
+            <div style="color: #525252; font-size: 13px; margin-bottom: 14px;">
                 {score_pct:.1f}% of max available today &middot;
                 {max_avail}/{max_theory} pts unlocked
                 ({max_theory - max_avail} pts blocked by pending inputs)
             </div>
-            <div style="display: inline-block; background: {color}; color: white;
+            <div style="display: inline-block; background: {color}; color: #ffffff;
                         padding: 8px 16px; border-radius: 6px; font-weight: 700;
                         font-size: 14px; letter-spacing: 0.5px;">
                 {regime_name} &middot; {equity_pct}% EQUITY
             </div>
-            <div style="font-size: 13px; color: #525252; margin-top: 12px;
+            <div style="color: #525252; font-size: 13px; margin-top: 12px;
                         font-style: italic;">
                 {tone}
             </div>
@@ -139,7 +133,7 @@ def render_hero(data):
 
 
 def render_pending_banner(data):
-    """Show pending-manual count prominently."""
+    """Native warning -- adapts to theme automatically."""
     pending = data.get("pending_manual", []) or []
     count = data.get("pending_manual_count", len(pending))
 
@@ -159,44 +153,32 @@ def render_pending_banner(data):
 
 
 def render_component(comp_key, comp):
-    """One component card with progress bar + expandable sub-inputs."""
+    """Native theme-aware header + native progress + custom expander cards.
+    No custom-HTML text outside the explicitly-styled sub-input cards."""
     name       = comp.get("name", comp_key)
     weight     = comp.get("weight", 0)
     score      = comp.get("score", 0) or 0
     max_avail  = comp.get("max_available", 0) or 0
     pct        = comp.get("pct_of_max_available", 0) or 0
 
-    # Header
-    if max_avail == 0:
-        header_right = (
-            f"<span style='color:#737373; font-size:13px'>"
-            f"no live data yet</span>"
-        )
-        progress_value = 0.0
-    else:
-        header_right = (
-            f"<strong>{score}</strong> "
-            f"<span style='color:#737373'>/ {max_avail}</span> "
-            f"<span style='color:#a3a3a3; font-size:12px'>({pct:.0f}%)</span>"
-        )
-        progress_value = min(pct / 100.0, 1.0)
+    # Header: native markdown (theme-aware)
+    c1, c2 = st.columns([2, 1])
+    with c1:
+        st.markdown(f"**{name}**  \u00b7  max {weight}")
+    with c2:
+        if max_avail == 0:
+            st.markdown(
+                "<div style='text-align:right; opacity:0.6;'>no live data yet</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f"<div style='text-align:right;'><b>{score}</b> / {max_avail} "
+                f"<span style='opacity:0.6;'>({pct:.0f}%)</span></div>",
+                unsafe_allow_html=True,
+            )
 
-    st.markdown(
-        f"""
-        <div style="display:flex; justify-content:space-between; align-items:baseline;
-                    margin-top: 14px; margin-bottom: 6px;">
-            <span style="font-weight:600; color:#171717;">
-                {name}
-                <span style="color:#a3a3a3; font-size:12px; font-weight:400;">
-                    &middot; max {weight}
-                </span>
-            </span>
-            <span style="font-size:14px;">{header_right}</span>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+    progress_value = min(pct / 100.0, 1.0) if max_avail > 0 else 0.0
     st.progress(progress_value)
 
     sub_inputs = comp.get("sub_inputs", {}) or {}
@@ -206,7 +188,8 @@ def render_component(comp_key, comp):
 
 
 def render_sub_input(sub_key, sub):
-    """One sub-input row with status badge + value + score + note."""
+    """Self-contained sub-input card -- light gray bg + explicit dark text.
+    Readable on any parent theme."""
     status   = sub.get("status", "UNKNOWN")
     value    = sub.get("value")
     score    = sub.get("score")
@@ -216,30 +199,37 @@ def render_sub_input(sub_key, sub):
     color = STATUS_COLOR.get(status, "#525252")
     label = STATUS_LABEL.get(status, status)
 
-    value_str = "—" if value is None else str(value)
-    score_str = "—" if score is None else f"{score}/{sub_max}"
+    value_str = "\u2014" if value is None else str(value)
+    score_str = "\u2014" if score is None else f"{score}/{sub_max}"
 
     st.markdown(
         f"""
-        <div style="border-left: 3px solid {color};
+        <div style="background: #f5f5f5;
+                    border-left: 3px solid {color};
                     padding: 10px 12px; margin: 8px 0;
-                    background: #fafafa; border-radius: 4px;">
+                    border-radius: 4px;">
             <div style="display:flex; justify-content:space-between; align-items:center;">
-                <span style="font-weight:600; color:#171717; font-size:14px;
+                <span style="color:#171717; font-weight:600; font-size:14px;
                              font-family: ui-monospace, SFMono-Regular, Menlo, monospace;">
                     {sub_key}
                 </span>
-                <span style="font-size:10px; font-weight:700;
-                             color: {color}; letter-spacing:1px;">
+                <span style="color: {color}; font-size:10px; font-weight:700;
+                             letter-spacing:1px;">
                     {label}
                 </span>
             </div>
-            <div style="font-size:13px; color:#525252; margin-top:4px;">
-                value: <code>{value_str}</code> &middot;
-                score: <code>{score_str}</code>
+            <div style="color:#525252; font-size:13px; margin-top:4px;">
+                value:
+                <code style="color:#171717; background:#ffffff;
+                             padding:1px 5px; border-radius:3px;
+                             border:1px solid #e5e5e5;">{value_str}</code>
+                &middot; score:
+                <code style="color:#171717; background:#ffffff;
+                             padding:1px 5px; border-radius:3px;
+                             border:1px solid #e5e5e5;">{score_str}</code>
             </div>
-            <div style="font-size:12px; color:#737373;
-                        margin-top:2px; font-style:italic;">
+            <div style="color:#737373; font-size:12px; margin-top:4px;
+                        font-style:italic;">
                 {note}
             </div>
         </div>
@@ -249,23 +239,21 @@ def render_sub_input(sub_key, sub):
 
 
 def render_raw_inputs(data):
-    """Bottom expandable section -- auto-fetched market data."""
+    """Native theme-aware key/value list."""
     raw = data.get("raw_inputs", {}) or {}
     if not raw:
         return
 
     with st.expander(f"Raw market data ({len(raw)} auto-fetched)"):
-        rows = ""
         for key, val in raw.items():
-            rows += (
-                f"<div style='display:flex; justify-content:space-between;"
-                f" padding: 6px 0; border-bottom: 1px solid #f5f5f5;'>"
-                f"<span style='font-family: ui-monospace, monospace;"
-                f" color:#525252; font-size:13px;'>{key}</span>"
-                f"<span style='font-weight:600; color:#171717;'>{val}</span>"
-                f"</div>"
-            )
-        st.markdown(rows, unsafe_allow_html=True)
+            c1, c2 = st.columns([2, 1])
+            with c1:
+                st.markdown(f"`{key}`")
+            with c2:
+                st.markdown(
+                    f"<div style='text-align:right;'><b>{val}</b></div>",
+                    unsafe_allow_html=True,
+                )
 
 
 # =============================================================================
@@ -274,11 +262,10 @@ def render_raw_inputs(data):
 def main():
     st.set_page_config(
         page_title="Engine A v2.1",
-        layout="centered",          # mobile-first
+        layout="centered",
         initial_sidebar_state="collapsed",
     )
 
-    # Auto-refresh (re-runs whole script every N seconds)
     st_autorefresh(
         interval=REFRESH_INTERVAL_SEC * 1000,
         key="engine_a_autorefresh",
@@ -286,7 +273,6 @@ def main():
 
     st.markdown("# Engine A v2.1")
 
-    # Top bar: caption + refresh button
     top_l, top_r = st.columns([3, 1])
     with top_l:
         st.caption(
@@ -297,7 +283,6 @@ def main():
         if st.button("Refresh", use_container_width=True):
             st.rerun()
 
-    # Load data
     data, err = load_engine_a_data(JSON_PATH)
     if err or data is None:
         st.error("Could not load engine_a_current.json.")
@@ -305,7 +290,6 @@ def main():
         st.code(f"Expected at: {JSON_PATH}")
         st.stop()
 
-    # Schema sanity
     schema_v = data.get("schema_version", "")
     computed_at = data.get("computed_at_ist", "unknown")
     if schema_v != "v2.1":
@@ -313,33 +297,26 @@ def main():
             f"Unexpected schema version: '{schema_v}' "
             f"(dashboard built for v2.1)."
         )
-    st.caption(f"Last compute: **{computed_at} IST** &middot; schema **{schema_v}**")
+    st.caption(f"Last compute: **{computed_at} IST** \u00b7 schema **{schema_v}**")
 
-    # Hero
     render_hero(data)
-
-    # Pending banner
     render_pending_banner(data)
 
-    # Stale warning
     stale_count = data.get("stale_inputs_count", 0)
     if stale_count > 0:
         st.warning(f"{stale_count} sub-input(s) marked STALE. Check fetchers.")
 
-    # 8 components
     st.markdown("### Components")
     components = data.get("components", {}) or {}
     for comp_key, comp in components.items():
         render_component(comp_key, comp)
 
-    # Raw inputs
     st.markdown("---")
     render_raw_inputs(data)
 
-    # Footer
     st.markdown("---")
     st.caption(
-        "Engine A v2.1 &middot; Step 9A (read-only). "
+        "Engine A v2.1 \u00b7 Step 9A (read-only). "
         "Manual input form ships in Step 9B."
     )
 
