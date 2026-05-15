@@ -602,18 +602,31 @@ def render_admin_form():
 
     n_set = sum(1 for f in MANUAL_FIELDS if f["key"] in current)
     st.caption(
-        f"{n_set} of {len(MANUAL_FIELDS)} manual inputs have a stored value. "
-        f"Update only the fields that have changed and tap Save."
+        f"{n_set} of {len(MANUAL_FIELDS)} manual inputs have a stored value."
+    )
+    st.info(
+        "**Tick the checkbox above any field to mark it for save.** "
+        "Only ticked fields get committed. Unticked fields are ignored, "
+        "even if you edited their value. This is intentional \u2014 prevents "
+        "accidental commits of config defaults."
     )
 
     # The form
     with st.form("manual_inputs_form", clear_on_submit=False):
         form_values = {}
+        update_flags = {}
         for group_name, field_keys in COMPONENT_GROUPS:
             st.markdown(f"#### {group_name}")
             for key in field_keys:
                 cfg = next(f for f in MANUAL_FIELDS if f["key"] == key)
                 cur_val, cur_ts = current.get(key, (None, None))
+
+                update_flags[key] = st.checkbox(
+                    f"Save changes to **{cfg['label']}**",
+                    value=False,
+                    key=f"chk_{key}",
+                    help="Tick before tapping Save to commit a new value for this field.",
+                )
                 form_values[key] = render_field(cfg, cur_val, cur_ts)
             st.markdown("")  # spacing
 
@@ -625,15 +638,17 @@ def render_admin_form():
         )
 
     if submitted:
-        # Diff: which fields changed?
+        # Only commit fields the user explicitly ticked
         changed = []
         for key, new_val in form_values.items():
-            old_val = current.get(key, (None, None))[0]
-            if is_value_changed(new_val, old_val):
+            if update_flags.get(key):
                 changed.append((key, new_val))
 
         if not changed:
-            st.info("No changes detected. Nothing committed.")
+            st.info(
+                "No fields marked for save. Tick the 'Save changes' checkbox "
+                "above each field you want to commit, then tap Save."
+            )
             return
 
         with st.spinner(f"Committing {len(changed)} change(s) to GitHub..."):
