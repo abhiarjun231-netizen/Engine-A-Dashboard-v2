@@ -1,36 +1,37 @@
 """
 ============================================================
 Engine A Dashboard v2.1
-Compute Layer: Engine A Score Calculation
+Compute Layer: Engine A Score Calculation — v2 (with manual inputs)
 ============================================================
-Reads all CSVs from data/core/ and computes the Engine A score (0-100)
-plus full component breakdown, regime determination, and allocation.
+v2 changes from v1:
+  - Reads data/core/manual_inputs.csv and wires 12 manual fields into score
+  - Nifty PE (manual) now feeds yield_gap calculation
+  - 12 new scoring functions with institutional bands
+  - PE Bubble safety override (Nifty PE > 26 caps equity at 70%)
+  - Same JSON output schema (backward compatible with dashboard app.py)
 
 Inputs (CSVs):
-  data/core/yfinance_global.csv  — global tickers
-  data/core/angel_one_indian.csv — Nifty 50, India VIX
-  data/core/bond_yields.csv      — India 10Y, 2Y G-Sec
+  data/core/yfinance_global.csv    — global tickers
+  data/core/angel_one_indian.csv   — Nifty 50, India VIX
+  data/core/bond_yields.csv        — India 10Y, 2Y G-Sec
+  data/core/manual_inputs.csv      — 12 manual fields (NEW in v2)
 
-Auxiliary (fetched live from yfinance for percentiles + moving averages):
-  ^INDIAVIX  — 5Y history for VIX percentile
-  ^NSEI      — 1Y history for Nifty 200 DMA
-  BZ=F       — 1Y history for Brent 6M average
-  GOLDBEES.NS — 1Y history for Gold 6M average
-  ^TNX, INR=X — 60D history for direction calculations
+Auxiliary (fetched live from yfinance):
+  ^INDIAVIX, ^NSEI, BZ=F, GOLDBEES.NS, ^TNX, INR=X
 
 Output:
-  data/core/engine_a_current.json — latest score + full breakdown
-  data/core/engine_a_history.csv  — append every run (for trend tracking)
+  data/core/engine_a_current.json
+  data/core/engine_a_history.csv
 
 Run: python compute/calculate_engine_a_v21.py
-Cron: After every successful data fetch (separate workflow step)
+Cron: After every successful data fetch
 
 Design principles:
-  - Honest: missing data = PENDING_MANUAL, never faked
+  - Honest: missing manual = PENDING_MANUAL, never faked
   - Partial scoring: shows "score / max_possible_today"
-  - Audit-traceable: every sub-input shows its raw value
-  - Graceful degradation: one component failure doesn't kill the whole score
-  - No estimates: scores are computed from real data or flagged
+  - Sanity checks: numerical inputs validated against ranges
+  - Graceful degradation: one field failure doesn't kill the whole score
+  - No estimates: scores from real data or flagged
 
 Last updated: May 15, 2026
 ============================================================
@@ -57,15 +58,12 @@ DATA_DIR = Path("data/core")
 OUTPUT_JSON = DATA_DIR / "engine_a_current.json"
 OUTPUT_HISTORY_CSV = DATA_DIR / "engine_a_history.csv"
 
-# Input CSVs
 YFINANCE_CSV = DATA_DIR / "yfinance_global.csv"
 ANGEL_ONE_CSV = DATA_DIR / "angel_one_indian.csv"
 BONDS_CSV = DATA_DIR / "bond_yields.csv"
+MANUAL_INPUTS_CSV = DATA_DIR / "manual_inputs.csv"   # NEW in v2
 
-# Allocation bands (hysteresis simplified for v1 — entry threshold only)
-# In v2 we'll add proper hysteresis once we have score history
 ALLOCATION_BANDS = [
-    # (min_score_pct_of_max_to_enter, regime_name, equity_pct)
     (75, "FULL_DEPLOY", 85),
     (60, "AGGRESSIVE",  70),
     (45, "ACTIVE",      55),
@@ -73,6 +71,25 @@ ALLOCATION_BANDS = [
     (25, "FREEZE",      25),
     (0,  "EXIT_ALL",    10),
 ]
+
+# Sanity ranges for manual numeric inputs (must match form widget bounds)
+MANUAL_RANGES = {
+    "nifty_pe_ttm":       (5.0,    50.0),
+    "nifty_pe_pctile":    (0.0,    100.0),
+    "mcap_gdp_pctile":    (0.0,    100.0),
+    "aaa_spread_pctile":  (0.0,    100.0),
+    "credit_growth_yoy":  (-10.0,  30.0),
+    "pct_above_200dma":   (0.0,    100.0),
+    "fii_30d":            (-200000.0, 200000.0),
+    "dii_30d":            (-100000.0, 200000.0),
+    "sip_yoy":            (-30.0,  50.0),
+    "pmi_mfg":            (30.0,   70.0),
+    "gst_yoy":            (-30.0,  50.0),
+}
+
+# PE Bubble safety override threshold (per strategy doc)
+PE_BUBBLE_THRESHOLD = 26.0
+PE_BUBBLE_EQUITY_CAP = 70
 
 
 # ============================================================
@@ -83,13 +100,12 @@ def now_ist() -> str:
     return datetime.now(IST).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def read_latest_value(csv_path: Path, ticker: str) -> float | None:
+def read_latest_value(csv_path: Path, ticker: str):
     """Read the latest OK row for a given ticker from a CSV."""
     if not csv_path.exists():
         return None
     try:
         df = pd.read_csv(csv_path)
-        # Filter for this ticker with OK status
         df = df[df["ticker"] == ticker]
         df = df[df["status"] == "OK"]
         if df.empty:
@@ -110,7 +126,7 @@ def fetch_history(ticker: str, period: str) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def percentile_rank(series: pd.Series, value: float) -> float | None:
+def percentile_rank(series: pd.Series, value: float):
     """Return percentile rank (0-100) of value within series."""
     if series.empty or value is None:
         return None
@@ -120,19 +136,80 @@ def percentile_rank(series: pd.Series, value: float) -> float | None:
         return None
 
 
+def load_manual_inputs() -> dict:
+    """
+    NEW in v2: Read manual_inputs.csv (long format) and return latest value
+    per field. Returns dict: {field_key: value}.
+
+    Empty dict if CSV missing or empty — every field will be PENDING_MANUAL.
+    """
+    if not MANUAL_INPUTS_CSV.exists():
+        print(f"INFO: {MANUAL_INPUTS_CSV} not found — all manual fields PENDING")
+        return {}
+    try:
+        df = pd.read_csv(MANUAL_INPUTS_CSV)
+        if df.empty:
+            print(f"INFO: {MANUAL_INPUTS_CSV} is empty (header-only) — all manual PENDING")
+            return {}
+        df = df.sort_values("timestamp_ist")
+        latest = df.groupby("field").tail(1)
+        result = {}
+        for _, row in latest.iterrows():
+            key = str(row["field"])
+            val = row["value"]
+            if pd.isna(val) or str(val).lower() == "nan":
+                continue
+            result[key] = val
+        print(f"INFO: Loaded {len(result)} manual input(s): {list(result.keys())}")
+        return result
+    except Exception as e:
+        print(f"WARN: Failed to load manual_inputs.csv: {e}")
+        return {}
+
+
+def _validate_numeric(value, field_key: str):
+    """Convert to float and validate range. Returns (float_value, error_msg)."""
+    if value is None:
+        return None, "missing"
+    try:
+        v = float(value)
+    except (TypeError, ValueError):
+        return None, f"non-numeric: {value!r}"
+    lo, hi = MANUAL_RANGES.get(field_key, (-1e9, 1e9))
+    if not (lo <= v <= hi):
+        return None, f"out of range [{lo}, {hi}]: {v}"
+    return v, None
+
+
+def _pending(name: str, max_pts: int) -> dict:
+    return {"value": None, "score": None, "max": max_pts,
+            "status": "PENDING_MANUAL",
+            "note": f"{name} \u2014 enter via dashboard Admin tab"}
+
+
+def _error(max_pts: int, msg: str) -> dict:
+    return {"value": None, "score": None, "max": max_pts,
+            "status": "ERROR", "note": msg}
+
+
 # ============================================================
-# SCORING FUNCTIONS — One per sub-input
+# SCORING FUNCTIONS — AUTO (unchanged from v1)
 # ============================================================
 
 # ---------- Component 1: Valuation (22 pts) ----------
 
-def score_yield_gap(nifty_pe: float | None, gsec_10y: float | None) -> dict:
-    """Earnings Yield Gap = (1/PE) - 10Y GSec.  10 pts."""
+def score_yield_gap(nifty_pe, gsec_10y) -> dict:
+    """Earnings Yield Gap = (100/PE) - 10Y GSec.  10 pts.
+    
+    v2 change: nifty_pe now comes from manual_inputs.csv, not None.
+    """
     if nifty_pe is None or gsec_10y is None:
-        return {"value": None, "score": None, "max": 10, "status": "PENDING_MANUAL",
-                "note": "Nifty PE manual entry needed" if gsec_10y else "No data"}
+        if gsec_10y is None:
+            return _error(10, "Missing G-Sec 10Y")
+        return _pending("Nifty PE TTM (drives yield gap)", 10)
     try:
-        earnings_yield = 100.0 / nifty_pe   # in %
+        nifty_pe_f = float(nifty_pe)
+        earnings_yield = 100.0 / nifty_pe_f
         gap = earnings_yield - gsec_10y
         if gap > 1.0:    score = 10
         elif gap > 0:    score = 7
@@ -140,18 +217,18 @@ def score_yield_gap(nifty_pe: float | None, gsec_10y: float | None) -> dict:
         elif gap > -2:   score = 2
         else:            score = 0
         return {"value": round(gap, 3), "score": score, "max": 10, "status": "OK",
-                "note": f"EY {earnings_yield:.2f}% - GSec {gsec_10y:.2f}% = {gap:+.2f}%"}
+                "note": f"EY {earnings_yield:.2f}% - GSec {gsec_10y:.2f}% = {gap:+.2f}% "
+                        f"(PE {nifty_pe_f:.2f})"}
     except Exception as e:
-        return {"value": None, "score": None, "max": 10, "status": "ERROR", "note": str(e)}
+        return _error(10, str(e))
 
 
-# ---------- Component 2: Credit & Rates (14 pts) ----------
+# ---------- Component 2: Credit & Rates (auto part) ----------
 
-def score_yield_curve(gsec_10y: float | None, gsec_2y: float | None) -> dict:
+def score_yield_curve(gsec_10y, gsec_2y) -> dict:
     """Yield Curve 10Y - 2Y.  3 pts."""
     if gsec_10y is None or gsec_2y is None:
-        return {"value": None, "score": None, "max": 3, "status": "ERROR",
-                "note": "Missing G-Sec data"}
+        return _error(3, "Missing G-Sec data")
     spread_bps = (gsec_10y - gsec_2y) * 100
     if spread_bps > 50:    score = 3
     elif spread_bps > 0:   score = 2
@@ -161,13 +238,12 @@ def score_yield_curve(gsec_10y: float | None, gsec_2y: float | None) -> dict:
             "note": f"10Y {gsec_10y:.3f}% - 2Y {gsec_2y:.3f}% = {spread_bps:+.1f} bps"}
 
 
-# ---------- Component 3: Trend & Breadth (13 pts) ----------
+# ---------- Component 3: Trend & Breadth (auto part) ----------
 
-def score_nifty_vs_200dma(nifty_current: float | None) -> dict:
+def score_nifty_vs_200dma(nifty_current) -> dict:
     """Nifty 50 vs its 200-day SMA.  7 pts."""
     if nifty_current is None:
-        return {"value": None, "score": None, "max": 7, "status": "ERROR",
-                "note": "No Nifty 50 data"}
+        return _error(7, "No Nifty 50 data")
     hist = fetch_history("^NSEI", "1y")
     if hist.empty or len(hist) < 200:
         return {"value": None, "score": None, "max": 7, "status": "STALE",
@@ -183,21 +259,19 @@ def score_nifty_vs_200dma(nifty_current: float | None) -> dict:
             "note": f"Nifty {nifty_current:.0f} vs 200DMA {sma_200:.0f} = {pct_diff:+.2f}%"}
 
 
-# ---------- Component 4: Volatility (10 pts) ----------
+# ---------- Component 4: Volatility (10 pts, both auto) ----------
 
-def score_vix_percentile(vix_current: float | None) -> dict:
+def score_vix_percentile(vix_current) -> dict:
     """India VIX vs 5Y percentile.  6 pts."""
     if vix_current is None:
-        return {"value": None, "score": None, "max": 6, "status": "ERROR",
-                "note": "No India VIX data"}
+        return _error(6, "No India VIX data")
     hist = fetch_history("^INDIAVIX", "5y")
     if hist.empty:
         return {"value": None, "score": None, "max": 6, "status": "STALE",
                 "note": "No VIX history available"}
     pctile = percentile_rank(hist["Close"], vix_current)
     if pctile is None:
-        return {"value": None, "score": None, "max": 6, "status": "ERROR",
-                "note": "Percentile calc failed"}
+        return _error(6, "Percentile calc failed")
     if pctile < 30:    score = 6
     elif pctile < 60:  score = 4
     elif pctile < 80:  score = 2
@@ -206,11 +280,10 @@ def score_vix_percentile(vix_current: float | None) -> dict:
             "note": f"VIX {vix_current:.2f} = {pctile:.1f}th percentile of 5Y"}
 
 
-def score_vix_vs_30d(vix_current: float | None) -> dict:
+def score_vix_vs_30d(vix_current) -> dict:
     """India VIX vs its 30-day moving average.  4 pts."""
     if vix_current is None:
-        return {"value": None, "score": None, "max": 4, "status": "ERROR",
-                "note": "No India VIX data"}
+        return _error(4, "No India VIX data")
     hist = fetch_history("^INDIAVIX", "60d")
     if hist.empty or len(hist) < 30:
         return {"value": None, "score": None, "max": 4, "status": "STALE",
@@ -224,13 +297,12 @@ def score_vix_vs_30d(vix_current: float | None) -> dict:
             "note": f"VIX {vix_current:.2f} vs 30D avg {avg_30d:.2f} = {pct_diff:+.2f}%"}
 
 
-# ---------- Component 7: Global Cross-Asset (12 pts) ----------
+# ---------- Component 7: Global Cross-Asset (all auto) ----------
 
-def score_us10y_direction(us10y_current: float | None) -> dict:
+def score_us10y_direction(us10y_current) -> dict:
     """US 10Y direction over 30 days.  2 pts."""
     if us10y_current is None:
-        return {"value": None, "score": None, "max": 2, "status": "ERROR",
-                "note": "No US10Y data"}
+        return _error(2, "No US10Y data")
     hist = fetch_history("^TNX", "60d")
     if hist.empty or len(hist) < 30:
         return {"value": None, "score": None, "max": 2, "status": "STALE",
@@ -245,11 +317,10 @@ def score_us10y_direction(us10y_current: float | None) -> dict:
             "note": f"US10Y {change_bps:+.1f} bps over 30D"}
 
 
-def score_dxy(dxy_current: float | None) -> dict:
+def score_dxy(dxy_current) -> dict:
     """DXY level.  2 pts."""
     if dxy_current is None:
-        return {"value": None, "score": None, "max": 2, "status": "ERROR",
-                "note": "No DXY data"}
+        return _error(2, "No DXY data")
     if dxy_current < 100:   score = 2
     elif dxy_current < 104: score = 1
     else:                   score = 0
@@ -257,11 +328,10 @@ def score_dxy(dxy_current: float | None) -> dict:
             "note": f"DXY {dxy_current:.2f}"}
 
 
-def score_us_vix(us_vix_current: float | None) -> dict:
+def score_us_vix(us_vix_current) -> dict:
     """US VIX level.  3 pts."""
     if us_vix_current is None:
-        return {"value": None, "score": None, "max": 3, "status": "ERROR",
-                "note": "No US VIX data"}
+        return _error(3, "No US VIX data")
     if us_vix_current < 15:    score = 3
     elif us_vix_current < 20:  score = 2
     elif us_vix_current < 25:  score = 1
@@ -270,35 +340,32 @@ def score_us_vix(us_vix_current: float | None) -> dict:
             "note": f"US VIX {us_vix_current:.2f}"}
 
 
-def score_inr_direction(inr_current: float | None) -> dict:
+def score_inr_direction(inr_current) -> dict:
     """INR/USD direction over 30 days.  2 pts."""
     if inr_current is None:
-        return {"value": None, "score": None, "max": 2, "status": "ERROR",
-                "note": "No INR data"}
+        return _error(2, "No INR data")
     hist = fetch_history("INR=X", "60d")
     if hist.empty or len(hist) < 30:
         return {"value": None, "score": None, "max": 2, "status": "STALE",
                 "note": "Insufficient INR history"}
     val_30d_ago = float(hist["Close"].iloc[-30])
     pct_change = ((inr_current - val_30d_ago) / val_30d_ago) * 100
-    # NOTE: INR=X is "rupees per dollar". Rising = INR weakening.
-    if pct_change < -1:    score = 2   # INR strengthening > 1%
-    elif pct_change < 1:   score = 1   # Flat ±1%
-    else:                  score = 0   # INR weakening > 1%
+    if pct_change < -1:    score = 2
+    elif pct_change < 1:   score = 1
+    else:                  score = 0
     return {"value": round(pct_change, 2), "score": score, "max": 2, "status": "OK",
             "note": f"INR/USD {pct_change:+.2f}% over 30D (positive = INR weaker)"}
 
 
-def score_gold_inr(gold_current: float | None) -> dict:
+def score_gold_inr(gold_current) -> dict:
     """GOLDBEES vs its 6-month average. 3 pts."""
     if gold_current is None:
-        return {"value": None, "score": None, "max": 3, "status": "ERROR",
-                "note": "No GOLDBEES data"}
+        return _error(3, "No GOLDBEES data")
     hist = fetch_history("GOLDBEES.NS", "1y")
     if hist.empty or len(hist) < 120:
         return {"value": None, "score": None, "max": 3, "status": "STALE",
                 "note": "Insufficient GOLDBEES history"}
-    avg_6m = float(hist["Close"].tail(120).mean())  # ~6 months of trading days
+    avg_6m = float(hist["Close"].tail(120).mean())
     pct_diff = ((gold_current - avg_6m) / avg_6m) * 100
     if pct_diff < -10:    score = 3
     elif pct_diff < 0:    score = 2
@@ -308,13 +375,12 @@ def score_gold_inr(gold_current: float | None) -> dict:
             "note": f"GOLDBEES {gold_current:.2f} vs 6M avg {avg_6m:.2f} = {pct_diff:+.2f}%"}
 
 
-# ---------- Component 8: Crude (5 pts) ----------
+# ---------- Component 8: Crude (all auto) ----------
 
-def score_brent(brent_current: float | None) -> dict:
+def score_brent(brent_current) -> dict:
     """Brent Crude vs its 6-month average. 5 pts."""
     if brent_current is None:
-        return {"value": None, "score": None, "max": 5, "status": "ERROR",
-                "note": "No Brent data"}
+        return _error(5, "No Brent data")
     hist = fetch_history("BZ=F", "1y")
     if hist.empty or len(hist) < 120:
         return {"value": None, "score": None, "max": 5, "status": "STALE",
@@ -330,19 +396,220 @@ def score_brent(brent_current: float | None) -> dict:
             "note": f"Brent ${brent_current:.2f} vs 6M avg ${avg_6m:.2f} = {pct_diff:+.2f}%"}
 
 
-# ---------- Manual Placeholders (Tier 4 — entered via dashboard) ----------
+# ============================================================
+# SCORING FUNCTIONS — MANUAL (NEW in v2)
+# Institutional bands; see Engine A v2.1 design doc.
+# ============================================================
 
-def manual_placeholder(name: str, max_pts: int) -> dict:
-    """Standard placeholder for sub-inputs requiring manual entry."""
-    return {"value": None, "score": None, "max": max_pts, "status": "PENDING_MANUAL",
-            "note": f"{name} — enter via dashboard (Tier 4 monthly)"}
+# ---------- C1: Valuation manuals ----------
+
+def score_nifty_pe_pctile(val) -> dict:
+    """Nifty PE 10Y percentile.  6 pts. Low percentile = cheap = good."""
+    if val is None:
+        return _pending("Nifty PE 10Y percentile", 6)
+    v, err = _validate_numeric(val, "nifty_pe_pctile")
+    if err:
+        return _error(6, f"nifty_pe_pctile {err}")
+    if v <= 20:    score = 6
+    elif v <= 40:  score = 4
+    elif v <= 60:  score = 2
+    elif v <= 80:  score = 1
+    else:          score = 0
+    return {"value": round(v, 1), "score": score, "max": 6, "status": "OK",
+            "note": f"Nifty PE at {v:.1f}th percentile of 10Y "
+                    f"({'cheap' if v <= 30 else 'fair' if v <= 60 else 'expensive'})"}
+
+
+def score_mcap_gdp_pctile(val) -> dict:
+    """MCap/GDP 20Y percentile.  6 pts. Low = cheap = good."""
+    if val is None:
+        return _pending("MCap/GDP 20Y percentile", 6)
+    v, err = _validate_numeric(val, "mcap_gdp_pctile")
+    if err:
+        return _error(6, f"mcap_gdp_pctile {err}")
+    if v <= 20:    score = 6
+    elif v <= 40:  score = 4
+    elif v <= 60:  score = 2
+    elif v <= 80:  score = 1
+    else:          score = 0
+    return {"value": round(v, 1), "score": score, "max": 6, "status": "OK",
+            "note": f"MCap/GDP at {v:.1f}th percentile of 20Y "
+                    f"({'undervalued' if v <= 30 else 'fair' if v <= 60 else 'stretched'})"}
+
+
+# ---------- C2: Credit & Rates manuals ----------
+
+def score_aaa_spread_pctile(val) -> dict:
+    """AAA-GSec spread 5Y percentile.  8 pts. Low percentile = tight spread = healthy."""
+    if val is None:
+        return _pending("AAA-GSec spread 5Y percentile", 8)
+    v, err = _validate_numeric(val, "aaa_spread_pctile")
+    if err:
+        return _error(8, f"aaa_spread_pctile {err}")
+    if v <= 20:    score = 8
+    elif v <= 40:  score = 6
+    elif v <= 60:  score = 4
+    elif v <= 80:  score = 2
+    else:          score = 0
+    return {"value": round(v, 1), "score": score, "max": 8, "status": "OK",
+            "note": f"AAA spread at {v:.1f}th percentile of 5Y "
+                    f"({'tight, healthy credit' if v <= 30 else 'normal' if v <= 60 else 'wide, stress'})"}
+
+
+def score_credit_growth_yoy(val) -> dict:
+    """Bank Credit Growth YoY.  3 pts. Higher = expanding economy = good."""
+    if val is None:
+        return _pending("Bank credit growth YoY", 3)
+    v, err = _validate_numeric(val, "credit_growth_yoy")
+    if err:
+        return _error(3, f"credit_growth_yoy {err}")
+    if v > 15:    score = 3
+    elif v > 10:  score = 2
+    elif v > 5:   score = 1
+    else:         score = 0
+    return {"value": round(v, 2), "score": score, "max": 3, "status": "OK",
+            "note": f"Bank credit YoY {v:+.1f}% "
+                    f"({'strong' if v > 15 else 'normal' if v > 10 else 'slowing' if v > 5 else 'recession-signal'})"}
+
+
+# ---------- C3: Trend & Breadth manual ----------
+
+def score_pct_above_200dma(val) -> dict:
+    """% Nifty 500 above 200 DMA.  6 pts. High = broad strength = good."""
+    if val is None:
+        return _pending("% Nifty 500 above 200 DMA", 6)
+    v, err = _validate_numeric(val, "pct_above_200dma")
+    if err:
+        return _error(6, f"pct_above_200dma {err}")
+    if v > 70:     score = 6
+    elif v > 55:   score = 4
+    elif v > 40:   score = 3
+    elif v > 25:   score = 1
+    else:          score = 0
+    return {"value": round(v, 1), "score": score, "max": 6, "status": "OK",
+            "note": f"{v:.1f}% of Nifty 500 above 200DMA "
+                    f"({'broad strength' if v > 70 else 'mixed' if v > 40 else 'narrow/weak'})"}
+
+
+# ---------- C5: Flows manuals ----------
+
+def score_fii_30d(val) -> dict:
+    """FII 30D net flow.  5 pts. Positive = inflow = good."""
+    if val is None:
+        return _pending("FII 30D net flow", 5)
+    v, err = _validate_numeric(val, "fii_30d")
+    if err:
+        return _error(5, f"fii_30d {err}")
+    if v > 30000:     score = 5
+    elif v > 10000:   score = 4
+    elif v > 0:       score = 3
+    elif v > -15000:  score = 1
+    else:             score = 0
+    return {"value": round(v, 0), "score": score, "max": 5, "status": "OK",
+            "note": f"FII 30D net flow {v:+,.0f} Cr "
+                    f"({'strong inflow' if v > 30000 else 'inflow' if v > 0 else 'outflow' if v > -15000 else 'heavy outflow'})"}
+
+
+def score_dii_30d(val) -> dict:
+    """DII 30D net flow.  4 pts. Positive = domestic confidence = good."""
+    if val is None:
+        return _pending("DII 30D net flow", 4)
+    v, err = _validate_numeric(val, "dii_30d")
+    if err:
+        return _error(4, f"dii_30d {err}")
+    if v > 25000:     score = 4
+    elif v > 10000:   score = 3
+    elif v > 0:       score = 2
+    else:             score = 0
+    return {"value": round(v, 0), "score": score, "max": 4, "status": "OK",
+            "note": f"DII 30D net flow {v:+,.0f} Cr "
+                    f"({'strong' if v > 25000 else 'normal' if v > 0 else 'outflow'})"}
+
+
+def score_sip_yoy(val) -> dict:
+    """SIP YoY growth.  3 pts. Higher = retail confidence = good."""
+    if val is None:
+        return _pending("SIP YoY %", 3)
+    v, err = _validate_numeric(val, "sip_yoy")
+    if err:
+        return _error(3, f"sip_yoy {err}")
+    if v > 20:    score = 3
+    elif v > 10:  score = 2
+    elif v > 0:   score = 1
+    else:         score = 0
+    return {"value": round(v, 1), "score": score, "max": 3, "status": "OK",
+            "note": f"SIP YoY {v:+.1f}% "
+                    f"({'strong' if v > 20 else 'healthy' if v > 10 else 'slowing' if v > 0 else 'capitulation'})"}
+
+
+# ---------- C6: Macro India manuals ----------
+
+def score_rbi_stance(val) -> dict:
+    """RBI Monetary Policy Stance. 3 pts. Categorical."""
+    if val is None:
+        return _pending("RBI stance", 3)
+    s = str(val).strip()
+    if s == "Accommodative":   score = 3
+    elif s == "Neutral":       score = 2
+    elif s == "Tightening":    score = 0
+    else:
+        return _error(3, f"rbi_stance unknown value: {s!r}")
+    return {"value": s, "score": score, "max": 3, "status": "OK",
+            "note": f"RBI stance: {s}"}
+
+
+def score_cpi_yoy_direction(val) -> dict:
+    """CPI YoY direction (3M trend). 3 pts. Categorical."""
+    if val is None:
+        return _pending("CPI YoY direction", 3)
+    s = str(val).strip()
+    if s == "Falling":   score = 3
+    elif s == "Stable":  score = 2
+    elif s == "Rising":  score = 0
+    else:
+        return _error(3, f"cpi_yoy_direction unknown value: {s!r}")
+    return {"value": s, "score": score, "max": 3, "status": "OK",
+            "note": f"CPI 3M trend: {s} "
+                    f"({'disinflation' if s == 'Falling' else 'anchored' if s == 'Stable' else 'forces tighter policy'})"}
+
+
+def score_pmi_mfg(val) -> dict:
+    """Manufacturing PMI. 3 pts. >50 = expansion."""
+    if val is None:
+        return _pending("Manufacturing PMI", 3)
+    v, err = _validate_numeric(val, "pmi_mfg")
+    if err:
+        return _error(3, f"pmi_mfg {err}")
+    if v > 55:     score = 3
+    elif v > 52:   score = 2
+    elif v > 50:   score = 1
+    else:          score = 0
+    return {"value": round(v, 1), "score": score, "max": 3, "status": "OK",
+            "note": f"PMI {v:.1f} "
+                    f"({'strong expansion' if v > 55 else 'expansion' if v > 50 else 'contraction'})"}
+
+
+def score_gst_yoy(val) -> dict:
+    """GST Collections YoY. 3 pts. Higher = robust economy."""
+    if val is None:
+        return _pending("GST YoY %", 3)
+    v, err = _validate_numeric(val, "gst_yoy")
+    if err:
+        return _error(3, f"gst_yoy {err}")
+    if v > 12:    score = 3
+    elif v > 8:   score = 2
+    elif v > 3:   score = 1
+    else:         score = 0
+    return {"value": round(v, 1), "score": score, "max": 3, "status": "OK",
+            "note": f"GST YoY {v:+.1f}% "
+                    f"({'robust' if v > 12 else 'normal' if v > 8 else 'slowing' if v > 3 else 'recession-signal'})"}
 
 
 # ============================================================
 # REGIME DETERMINATION
 # ============================================================
 
-def determine_regime(score_pct: float) -> tuple[str, int]:
+def determine_regime(score_pct: float):
     """Map score % of max to regime + equity allocation %."""
     for min_pct, regime, equity_pct in ALLOCATION_BANDS:
         if score_pct >= min_pct:
@@ -350,15 +617,35 @@ def determine_regime(score_pct: float) -> tuple[str, int]:
     return "EXIT_ALL", 10
 
 
+def apply_safety_overrides(regime: str, equity_pct: int, nifty_pe) -> tuple:
+    """
+    Apply safety overrides per strategy doc:
+      - PE Bubble: Nifty PE > 26 caps equity at 70%
+
+    Returns (regime, equity_pct, override_applied_or_none).
+    """
+    if nifty_pe is not None:
+        try:
+            pe_f = float(nifty_pe)
+            if pe_f > PE_BUBBLE_THRESHOLD and equity_pct > PE_BUBBLE_EQUITY_CAP:
+                return regime, PE_BUBBLE_EQUITY_CAP, (
+                    f"PE Bubble override: Nifty PE {pe_f:.2f} > {PE_BUBBLE_THRESHOLD}, "
+                    f"equity capped at {PE_BUBBLE_EQUITY_CAP}%"
+                )
+        except (TypeError, ValueError):
+            pass
+    return regime, equity_pct, None
+
+
 # ============================================================
 # MAIN COMPUTATION
 # ============================================================
 
 def compute_engine_a():
-    print(f"[{now_ist()}] Starting Engine A v2.1 compute layer...")
+    print(f"[{now_ist()}] Starting Engine A v2.1 compute layer (v2 with manual inputs)...")
     print("=" * 60)
 
-    # ---- Load latest data from CSVs ----
+    # ---- Load auto data from CSVs ----
     nifty_50      = read_latest_value(ANGEL_ONE_CSV, "NIFTY 50")
     india_vix     = read_latest_value(ANGEL_ONE_CSV, "INDIA VIX")
     us_10y        = read_latest_value(YFINANCE_CSV, "^TNX")
@@ -370,7 +657,23 @@ def compute_engine_a():
     gsec_10y      = read_latest_value(BONDS_CSV, "india-10-year-bond-yield")
     gsec_2y       = read_latest_value(BONDS_CSV, "india-2-year-bond-yield")
 
-    print(f"Loaded data:")
+    # ---- Load manual inputs (v2 NEW) ----
+    manual = load_manual_inputs()
+    nifty_pe         = manual.get("nifty_pe_ttm")
+    nifty_pe_pctile  = manual.get("nifty_pe_pctile")
+    mcap_gdp_pctile  = manual.get("mcap_gdp_pctile")
+    aaa_spread_pct   = manual.get("aaa_spread_pctile")
+    credit_growth    = manual.get("credit_growth_yoy")
+    pct_above_200dma = manual.get("pct_above_200dma")
+    fii_30d          = manual.get("fii_30d")
+    dii_30d          = manual.get("dii_30d")
+    sip_yoy          = manual.get("sip_yoy")
+    rbi_stance       = manual.get("rbi_stance")
+    cpi_direction    = manual.get("cpi_yoy_direction")
+    pmi_mfg          = manual.get("pmi_mfg")
+    gst_yoy          = manual.get("gst_yoy")
+
+    print(f"Auto data:")
     print(f"  Nifty 50:    {nifty_50}")
     print(f"  India VIX:   {india_vix}")
     print(f"  US 10Y:      {us_10y}")
@@ -381,6 +684,10 @@ def compute_engine_a():
     print(f"  GOLDBEES:    {goldbees}")
     print(f"  G-Sec 10Y:   {gsec_10y}")
     print(f"  G-Sec 2Y:    {gsec_2y}")
+    print(f"\nManual inputs loaded: {len(manual)}/13")
+    if manual:
+        for k, v in manual.items():
+            print(f"  {k}: {v}")
     print("-" * 60)
 
     # ---- Score each sub-input ----
@@ -388,24 +695,24 @@ def compute_engine_a():
         "C1_valuation": {
             "weight": 22, "name": "Valuation",
             "sub_inputs": {
-                "yield_gap":        score_yield_gap(None, gsec_10y),
-                "nifty_pe_pctile":  manual_placeholder("Nifty PE %ile", 6),
-                "mcap_gdp_pctile":  manual_placeholder("MCap/GDP %ile", 6),
+                "yield_gap":        score_yield_gap(nifty_pe, gsec_10y),
+                "nifty_pe_pctile":  score_nifty_pe_pctile(nifty_pe_pctile),
+                "mcap_gdp_pctile":  score_mcap_gdp_pctile(mcap_gdp_pctile),
             }
         },
         "C2_credit_rates": {
             "weight": 14, "name": "Credit & Rates",
             "sub_inputs": {
-                "aaa_spread_pctile":  manual_placeholder("AAA-GSec spread %ile", 8),
+                "aaa_spread_pctile":  score_aaa_spread_pctile(aaa_spread_pct),
                 "yield_curve_10y_2y": score_yield_curve(gsec_10y, gsec_2y),
-                "credit_growth_yoy":  manual_placeholder("Bank credit growth YoY", 3),
+                "credit_growth_yoy":  score_credit_growth_yoy(credit_growth),
             }
         },
         "C3_trend_breadth": {
             "weight": 13, "name": "Trend & Breadth",
             "sub_inputs": {
-                "nifty_vs_200dma":      score_nifty_vs_200dma(nifty_50),
-                "pct_above_200dma":     manual_placeholder("% Nifty 500 above 200 DMA", 6),
+                "nifty_vs_200dma":  score_nifty_vs_200dma(nifty_50),
+                "pct_above_200dma": score_pct_above_200dma(pct_above_200dma),
             }
         },
         "C4_volatility": {
@@ -418,18 +725,18 @@ def compute_engine_a():
         "C5_flows": {
             "weight": 12, "name": "Flows",
             "sub_inputs": {
-                "fii_30d":   manual_placeholder("FII 30D net flow", 5),
-                "dii_30d":   manual_placeholder("DII 30D net flow", 4),
-                "sip_yoy":   manual_placeholder("SIP YoY%", 3),
+                "fii_30d":   score_fii_30d(fii_30d),
+                "dii_30d":   score_dii_30d(dii_30d),
+                "sip_yoy":   score_sip_yoy(sip_yoy),
             }
         },
         "C6_macro_india": {
             "weight": 12, "name": "Macro India",
             "sub_inputs": {
-                "rbi_stance": manual_placeholder("RBI stance", 3),
-                "cpi_yoy":    manual_placeholder("CPI YoY direction", 3),
-                "pmi_mfg":    manual_placeholder("Manufacturing PMI", 3),
-                "gst_yoy":    manual_placeholder("GST YoY%", 3),
+                "rbi_stance":        score_rbi_stance(rbi_stance),
+                "cpi_yoy":           score_cpi_yoy_direction(cpi_direction),
+                "pmi_mfg":           score_pmi_mfg(pmi_mfg),
+                "gst_yoy":           score_gst_yoy(gst_yoy),
             }
         },
         "C7_global_cross_asset": {
@@ -479,6 +786,9 @@ def compute_engine_a():
     score_pct = (total_score / total_max_available * 100) if total_max_available else 0
     regime, equity_pct = determine_regime(score_pct)
 
+    # ---- Apply safety overrides (v2 NEW) ----
+    regime, equity_pct, override_note = apply_safety_overrides(regime, equity_pct, nifty_pe)
+
     # ---- Print breakdown ----
     print(f"\n{'Component':<28} {'Score':<10} {'Max Avail':<12} {'% of Max':<10}")
     print("-" * 60)
@@ -486,17 +796,19 @@ def compute_engine_a():
         print(f"{comp['name']:<28} {comp['score']:<10} {comp['max_available']:<12} "
               f"{comp['pct_of_max_available']:.1f}%")
     print("-" * 60)
-    print(f"\n📊 TOTAL SCORE:        {total_score} / {total_max_available} "
+    print(f"\nTOTAL SCORE:        {total_score} / {total_max_available} "
           f"(out of theoretical max {total_max_possible})")
-    print(f"📈 SCORE % OF MAX:     {score_pct:.1f}%")
-    print(f"🎯 REGIME:             {regime}")
-    print(f"💼 EQUITY ALLOCATION:  {equity_pct}%")
-    print(f"\n⏳ PENDING MANUAL:     {len(pending_manual)} sub-inputs")
+    print(f"SCORE % OF MAX:     {score_pct:.1f}%")
+    print(f"REGIME:             {regime}")
+    print(f"EQUITY ALLOCATION:  {equity_pct}%")
+    if override_note:
+        print(f"SAFETY OVERRIDE:    {override_note}")
+    print(f"\nPENDING MANUAL:     {len(pending_manual)} sub-inputs")
     if pending_manual:
         for item in pending_manual:
             print(f"     - {item}")
     if stale_inputs:
-        print(f"\n⚠️  STALE/ERROR:        {len(stale_inputs)} sub-inputs")
+        print(f"\nSTALE/ERROR:        {len(stale_inputs)} sub-inputs")
         for item in stale_inputs:
             print(f"     - {item}")
     print("=" * 60)
@@ -511,6 +823,7 @@ def compute_engine_a():
         "score_pct_of_max_available": round(score_pct, 2),
         "regime": regime,
         "regime_equity_pct": equity_pct,
+        "safety_override": override_note,
         "pending_manual_count": len(pending_manual),
         "stale_inputs_count": len(stale_inputs),
         "pending_manual": pending_manual,
@@ -527,14 +840,15 @@ def compute_engine_a():
             "goldbees": goldbees,
             "gsec_10y": gsec_10y,
             "gsec_2y": gsec_2y,
-        }
+        },
+        "manual_inputs_loaded": list(manual.keys()),
     }
 
     # ---- Write JSON ----
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     with open(OUTPUT_JSON, "w") as f:
         json.dump(output, f, indent=2, default=str)
-    print(f"\n✅ Wrote {OUTPUT_JSON}")
+    print(f"\nWrote {OUTPUT_JSON}")
 
     # ---- Append to history CSV ----
     history_row = {
@@ -552,7 +866,7 @@ def compute_engine_a():
         history_df.to_csv(OUTPUT_HISTORY_CSV, mode="a", header=False, index=False)
     else:
         history_df.to_csv(OUTPUT_HISTORY_CSV, mode="w", header=True, index=False)
-    print(f"✅ Appended to {OUTPUT_HISTORY_CSV}")
+    print(f"Appended to {OUTPUT_HISTORY_CSV}")
 
     print(f"\n[{now_ist()}] Compute layer done.\n")
     return output
