@@ -1,1 +1,16 @@
+# Streamlit theme config
+# Forces light theme so custom inline-HTML colors render correctly.
+# Without this, Streamlit Cloud auto-matches the user's OS dark mode and
+# our hardcoded dark text becomes invisible on dark background.
 
+[theme]
+base = "light"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#fafafa"
+textColor = "#171717"
+primaryColor = "#171717"
+font = "sans serif"
+
+[server]
+# Streamlit Cloud defaults are fine; explicit for clarity
+headless = true
