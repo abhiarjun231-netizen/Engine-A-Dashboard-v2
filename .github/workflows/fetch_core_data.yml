@@ -3,13 +3,6 @@ name: Fetch Core Data (yfinance + Angel One)
 # ============================================================
 # Engine A Dashboard v2.1 — Core Data Fetch + Score Workflow
 # ============================================================
-# Pipeline:
-#   1. Fetch yfinance global data
-#   2. Fetch Angel One Indian data
-#   3. Fetch bond yields (scraper)
-#   4. Compute Engine A score from CSVs
-#   5. Commit all results
-# ============================================================
 
 on:
   schedule:
@@ -69,9 +62,6 @@ jobs:
         run: python fetchers/core/scrapers/fetch_bonds.py
         continue-on-error: true
 
-      # ============================================================
-      # COMPUTE LAYER — Engine A v2.1 Score
-      # ============================================================
       - name: Compute Engine A score
         run: python compute/calculate_engine_a_v21.py
         continue-on-error: true
@@ -91,22 +81,19 @@ jobs:
             echo "Committed and pushed new data + score."
           fi
 
-      - name: Show Engine A score summary
+      - name: Display recent data
         if: always()
         run: |
+          echo "=== Engine A Current Score (JSON) ==="
           if [ -f data/core/engine_a_current.json ]; then
-            echo "=== Engine A Current Score ==="
-            python -c "
-import json
-with open('data/core/engine_a_current.json') as f:
-    d = json.load(f)
-print(f'Score:        {d[\"score\"]} / {d[\"max_available_today\"]} ({d[\"score_pct_of_max_available\"]}% of available)')
-print(f'Regime:       {d[\"regime\"]}')
-print(f'Equity %:     {d[\"regime_equity_pct\"]}%')
-print(f'Pending:      {d[\"pending_manual_count\"]} manual inputs')
-print(f'Stale/Error:  {d[\"stale_inputs_count\"]} inputs')
-print(f'Computed at:  {d[\"computed_at_ist\"]}')
-"
+            cat data/core/engine_a_current.json
           else
-            echo "engine_a_current.json not found — compute layer may have failed"
+            echo "engine_a_current.json not found"
+          fi
+          echo ""
+          echo "=== Engine A History (last 5 rows) ==="
+          if [ -f data/core/engine_a_history.csv ]; then
+            tail -5 data/core/engine_a_history.csv
+          else
+            echo "engine_a_history.csv not found"
           fi
