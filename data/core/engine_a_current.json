@@ -1,24 +1,23 @@
 {
   "schema_version": "v2.1",
-  "computed_at_ist": "2026-05-15 17:06:43",
+  "computed_at_ist": "2026-05-15 18:47:37",
   "score": 13,
-  "max_available_today": 40,
+  "max_available_today": 50,
   "max_theoretical": 100,
-  "score_pct_of_max_available": 32.5,
+  "score_pct_of_max_available": 26.0,
   "regime": "FREEZE",
   "regime_equity_pct": 25,
   "safety_override": null,
-  "pending_manual_count": 12,
+  "pending_manual_count": 11,
   "stale_inputs_count": 0,
   "pending_manual": [
-    "C1_valuation.yield_gap",
     "C1_valuation.nifty_pe_pctile",
-    "C1_valuation.mcap_gdp_pctile",
-    "C2_credit_rates.aaa_spread_pctile",
+    "C1_valuation.mcap_gdp_ratio",
+    "C2_credit_rates.aaa_spread_bps",
     "C2_credit_rates.credit_growth_yoy",
     "C3_trend_breadth.pct_above_200dma",
-    "C5_flows.fii_30d",
-    "C5_flows.dii_30d",
+    "C5_flows.fii_latest_month",
+    "C5_flows.dii_latest_month",
     "C5_flows.sip_yoy",
     "C6_macro_india.cpi_yoy",
     "C6_macro_india.pmi_mfg",
@@ -31,11 +30,11 @@
       "name": "Valuation",
       "sub_inputs": {
         "yield_gap": {
-          "value": null,
-          "score": null,
+          "value": -2.109,
+          "score": 0,
           "max": 10,
-          "status": "PENDING_MANUAL",
-          "note": "Nifty PE TTM (drives yield gap) \u2014 enter via dashboard Admin tab"
+          "status": "OK",
+          "note": "EY 4.96% - GSec 7.06% = -2.11% (PE 20.18)"
         },
         "nifty_pe_pctile": {
           "value": null,
@@ -44,35 +43,35 @@
           "status": "PENDING_MANUAL",
           "note": "Nifty PE 10Y percentile \u2014 enter via dashboard Admin tab"
         },
-        "mcap_gdp_pctile": {
+        "mcap_gdp_ratio": {
           "value": null,
           "score": null,
           "max": 6,
           "status": "PENDING_MANUAL",
-          "note": "MCap/GDP 20Y percentile \u2014 enter via dashboard Admin tab"
+          "note": "MCap/GDP ratio (raw %) \u2014 enter via dashboard Admin tab"
         }
       },
       "score": 0,
-      "max_available": 0,
-      "pct_of_max_available": 0
+      "max_available": 10,
+      "pct_of_max_available": 0.0
     },
     "C2_credit_rates": {
       "weight": 14,
       "name": "Credit & Rates",
       "sub_inputs": {
-        "aaa_spread_pctile": {
+        "aaa_spread_bps": {
           "value": null,
           "score": null,
           "max": 8,
           "status": "PENDING_MANUAL",
-          "note": "AAA-GSec spread 5Y percentile \u2014 enter via dashboard Admin tab"
+          "note": "AAA-GSec spread (raw bps) \u2014 enter via dashboard Admin tab"
         },
         "yield_curve_10y_2y": {
-          "value": 58.1,
+          "value": 59.1,
           "score": 3,
           "max": 3,
           "status": "OK",
-          "note": "10Y 7.054% - 2Y 6.473% = +58.1 bps"
+          "note": "10Y 7.064% - 2Y 6.473% = +59.1 bps"
         },
         "credit_growth_yoy": {
           "value": null,
@@ -136,19 +135,19 @@
       "weight": 12,
       "name": "Flows",
       "sub_inputs": {
-        "fii_30d": {
+        "fii_latest_month": {
           "value": null,
           "score": null,
           "max": 5,
           "status": "PENDING_MANUAL",
-          "note": "FII 30D net flow \u2014 enter via dashboard Admin tab"
+          "note": "FII latest month net flow \u2014 enter via dashboard Admin tab"
         },
-        "dii_30d": {
+        "dii_latest_month": {
           "value": null,
           "score": null,
           "max": 4,
           "status": "PENDING_MANUAL",
-          "note": "DII 30D net flow \u2014 enter via dashboard Admin tab"
+          "note": "DII latest month net flow \u2014 enter via dashboard Admin tab"
         },
         "sip_yoy": {
           "value": null,
@@ -178,7 +177,7 @@
           "score": null,
           "max": 3,
           "status": "PENDING_MANUAL",
-          "note": "CPI YoY direction \u2014 enter via dashboard Admin tab"
+          "note": "CPI YoY latest (auto-direction) \u2014 enter via dashboard Admin tab"
         },
         "pmi_mfg": {
           "value": null,
@@ -204,32 +203,32 @@
       "name": "Global Cross-Asset",
       "sub_inputs": {
         "us_10y_direction": {
-          "value": 14.8,
+          "value": 22.9,
           "score": 1,
           "max": 2,
           "status": "OK",
-          "note": "US10Y +14.8 bps over 30D"
+          "note": "US10Y +22.9 bps over 30D"
         },
         "dxy": {
-          "value": 99.1,
+          "value": 99.21,
           "score": 2,
           "max": 2,
           "status": "OK",
-          "note": "DXY 99.10"
+          "note": "DXY 99.21"
         },
         "us_vix": {
-          "value": 18.59,
+          "value": 19.16,
           "score": 2,
           "max": 3,
           "status": "OK",
-          "note": "US VIX 18.59"
+          "note": "US VIX 19.16"
         },
         "inr_direction": {
-          "value": 3.06,
+          "value": 3.21,
           "score": 0,
           "max": 2,
           "status": "OK",
-          "note": "INR/USD +3.06% over 30D (positive = INR weaker)"
+          "note": "INR/USD +3.21% over 30D (positive = INR weaker)"
         },
         "gold_inr_vs_6m": {
           "value": 7.19,
@@ -248,11 +247,11 @@
       "name": "Crude",
       "sub_inputs": {
         "brent_vs_6m": {
-          "value": 32.42,
+          "value": 32.14,
           "score": 0,
           "max": 5,
           "status": "OK",
-          "note": "Brent $108.08 vs 6M avg $81.62 = +32.42%"
+          "note": "Brent $107.85 vs 6M avg $81.62 = +32.14%"
         }
       },
       "score": 0,
@@ -263,16 +262,17 @@
   "raw_inputs": {
     "nifty_50": 23643.5,
     "india_vix": 18.79,
-    "us_10y": 4.461,
-    "dxy": 99.099,
-    "us_vix": 18.59,
-    "inr_usd": 95.82,
-    "brent_crude": 108.08,
+    "us_10y": 4.564,
+    "dxy": 99.211,
+    "us_vix": 19.16,
+    "inr_usd": 95.955,
+    "brent_crude": 107.85,
     "goldbees": 129.41,
-    "gsec_10y": 7.054,
+    "gsec_10y": 7.064,
     "gsec_2y": 6.473
   },
   "manual_inputs_loaded": [
-    "rbi_stance"
+    "rbi_stance",
+    "nifty_pe_ttm"
   ]
 }
