@@ -1,0 +1,356 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Methodology · Parthsarthi Capital</title>
+<meta name="theme-color" content="#0A1628">
+<meta name="description" content="The 8-component regime framework that powers Parthsarthi Capital's India equity allocation signal.">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,wght@0,400;0,500;0,600;1,400&family=DM+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+
+<style>
+  :root {
+    --navy:    #0A1628;
+    --cream:   #FDFBF5;
+    --saffron: #D97706;
+    --muted:   #6B7280;
+    --rule:    #E5E0D5;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--cream);
+    color: var(--navy);
+    font-family: 'DM Sans', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    line-height: 1.6;
+  }
+  body { padding: 2rem 1.5rem 4rem; max-width: 680px; margin: 0 auto; }
+
+  /* Header */
+  .brand {
+    display: flex;
+    align-items: center;
+    gap: 0.9rem;
+    padding-bottom: 1.5rem;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 2.5rem;
+  }
+  .brand svg { width: 44px; height: 44px; flex-shrink: 0; }
+  .brand-text { line-height: 1.2; }
+  .brand-name {
+    font-family: 'Fraunces', serif;
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--navy);
+  }
+  .brand-italic {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-weight: 400;
+    color: var(--navy);
+  }
+  .brand-deva {
+    font-size: 0.9rem;
+    color: var(--saffron);
+    margin-top: 2px;
+  }
+
+  /* Title */
+  h1 {
+    font-family: 'Fraunces', serif;
+    font-size: 2.4rem;
+    font-weight: 500;
+    letter-spacing: -0.02em;
+    margin-bottom: 0.5rem;
+  }
+  .subtitle {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 1.05rem;
+    color: var(--muted);
+    margin-bottom: 2.5rem;
+  }
+
+  /* Section */
+  section { margin-bottom: 2.8rem; }
+  h2 {
+    font-family: 'Fraunces', serif;
+    font-size: 1.4rem;
+    font-weight: 500;
+    margin-bottom: 0.8rem;
+    display: flex;
+    align-items: baseline;
+    gap: 0.6rem;
+  }
+  .num {
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    color: var(--saffron);
+    font-size: 1rem;
+    font-weight: 400;
+  }
+  p { margin-bottom: 0.9rem; color: #2A3340; }
+
+  /* Components grid */
+  .comp {
+    display: flex;
+    gap: 1rem;
+    padding: 0.9rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .comp:last-child { border-bottom: none; }
+  .comp-id {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--saffron);
+    padding: 3px 6px;
+    background: rgba(217,119,6,0.08);
+    border-radius: 4px;
+    height: fit-content;
+    flex-shrink: 0;
+  }
+  .comp-body { flex: 1; }
+  .comp-name {
+    font-family: 'Fraunces', serif;
+    font-size: 1.08rem;
+    font-weight: 500;
+    margin-bottom: 2px;
+  }
+  .comp-weight {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-bottom: 4px;
+  }
+  .comp-desc { font-size: 0.92rem; color: #3D4855; }
+
+  /* Regime table */
+  .regime-table {
+    border-top: 1px solid var(--rule);
+  }
+  .regime-row {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 1rem;
+    align-items: center;
+    padding: 0.85rem 0;
+    border-bottom: 1px solid var(--rule);
+  }
+  .regime-score {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.8rem;
+    color: var(--muted);
+    min-width: 56px;
+  }
+  .regime-name {
+    font-family: 'Fraunces', serif;
+    font-weight: 500;
+    font-size: 1.02rem;
+  }
+  .regime-eq {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.95rem;
+    color: var(--saffron);
+    font-weight: 500;
+  }
+
+  /* Pullquote / safety */
+  .pullquote {
+    background: rgba(217,119,6,0.06);
+    border-left: 3px solid var(--saffron);
+    padding: 1rem 1.1rem;
+    margin: 1rem 0;
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 1rem;
+    color: var(--navy);
+  }
+
+  /* Footer */
+  .disclaimer {
+    margin-top: 3rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--rule);
+    font-family: 'Fraunces', serif;
+    font-style: italic;
+    font-size: 0.9rem;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+  .nav-back {
+    display: inline-block;
+    margin-top: 2rem;
+    color: var(--saffron);
+    text-decoration: none;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 0.85rem;
+    border-bottom: 1px dotted var(--saffron);
+    padding-bottom: 2px;
+  }
+  .nav-back:hover { color: var(--navy); border-bottom-color: var(--navy); }
+</style>
+</head>
+<body>
+
+<div class="brand">
+  <svg viewBox="0 0 100 100" fill="none" stroke="#0A1628" stroke-width="2.5">
+    <circle cx="50" cy="50" r="42"/>
+    <circle cx="50" cy="50" r="6" fill="#0A1628"/>
+    <line x1="50" y1="8" x2="50" y2="92"/>
+    <line x1="8" y1="50" x2="92" y2="50"/>
+    <line x1="20" y1="20" x2="80" y2="80"/>
+    <line x1="80" y1="20" x2="20" y2="80"/>
+  </svg>
+  <div class="brand-text">
+    <div class="brand-name">Parthsarthi <span class="brand-italic">Capital</span></div>
+    <div class="brand-deva">पार्थसारथि</div>
+  </div>
+</div>
+
+<h1>Methodology</h1>
+<p class="subtitle">How the regime is read, and how capital follows.</p>
+
+<section>
+  <h2><span class="num">i</span> The framework</h2>
+  <p>Parthsarthi reads the Indian market regime through <strong>eight components</strong>, each scored against historical bands calibrated on multi-decade data. The components sum to <strong>100 points</strong>. The total score maps to one of six regime bands, and each band dictates a target equity allocation.</p>
+  <p>The system is built to remove emotion from allocation decisions. It does not predict direction. It reads the conditions and recommends a posture.</p>
+</section>
+
+<section>
+  <h2><span class="num">ii</span> The eight components</h2>
+
+  <div class="comp">
+    <span class="comp-id">C1</span>
+    <div class="comp-body">
+      <div class="comp-name">Valuation</div>
+      <div class="comp-weight">22 points · Nifty PE, MCap/GDP, earnings yield gap</div>
+      <div class="comp-desc">How expensive is the market versus its earnings, the economy, and bond yields?</div>
+    </div>
+  </div>
+
+  <div class="comp">
+    <span class="comp-id">C2</span>
+    <div class="comp-body">
+      <div class="comp-name">Credit &amp; Rates</div>
+      <div class="comp-weight">14 points · AAA spread, credit growth, yield curve</div>
+      <div class="comp-desc">Are financial conditions easy or tightening? Credit is the oxygen of equity returns.</div>
+    </div>
+  </div>
+
+  <div class="comp">
+    <span class="comp-id">C3</span>
+    <div class="comp-body">
+      <div class="comp-name">Trend &amp; Breadth</div>
+      <div class="comp-weight">13 points · Nifty vs 200DMA, % stocks above 200DMA</div>
+      <div class="comp-desc">Is the market trending up with broad participation, or narrowly led?</div>
+    </div>
+  </div>
+
+  <div class="comp">
+    <span class="comp-id">C4</span>
+    <div class="comp-body">
+      <div class="comp-name">Volatility</div>
+      <div class="comp-weight">10 points · India VIX percentile, VIX vs 30-day average</div>
+      <div class="comp-desc">Is fear elevated? High VIX is both a risk signal and an opportunity signal.</div>
+    </div>
+  </div>
+
+  <div class="comp">
+    <span class="comp-id">C5</span>
+    <div class="comp-body">
+      <div class="comp-name">Flows</div>
+      <div class="comp-weight">12 points · FII, DII, SIP YoY</div>
+      <div class="comp-desc">Who is buying, who is selling. Domestic SIP flows are the structural anchor.</div>
+    </div>
+  </div>
+
+  <div class="comp">
+    <span class="comp-id">C6</span>
+    <div class="comp-body">
+      <div class="comp-name">Macro India</div>
+      <div class="comp-weight">12 points · RBI stance, CPI, PMI, GST</div>
+      <div class="comp-desc">The state of the underlying economy. Macro leads earnings; earnings lead markets.</div>
+    </div>
+  </div>
+
+  <div class="comp">
+    <span class="comp-id">C7</span>
+    <div class="comp-body">
+      <div class="comp-name">Global Cross-Asset</div>
+      <div class="comp-weight">12 points · US 10Y, DXY, US VIX, INR, gold</div>
+      <div class="comp-desc">India does not trade in isolation. Global risk appetite sets the tide.</div>
+    </div>
+  </div>
+
+  <div class="comp">
+    <span class="comp-id">C8</span>
+    <div class="comp-body">
+      <div class="comp-name">Crude</div>
+      <div class="comp-weight">5 points · Brent versus 6-month average</div>
+      <div class="comp-desc">India is a net oil importer. Cheap crude is a tailwind, expensive crude is a tax.</div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">iii</span> The six regime bands</h2>
+  <p>The total score maps to a target equity allocation. The remaining capital is split between debt (75%) and gold (25%).</p>
+
+  <div class="regime-table">
+    <div class="regime-row">
+      <span class="regime-score">75 – 100</span>
+      <span class="regime-name">Full Deploy</span>
+      <span class="regime-eq">85% equity</span>
+    </div>
+    <div class="regime-row">
+      <span class="regime-score">60 – 74</span>
+      <span class="regime-name">Aggressive</span>
+      <span class="regime-eq">70% equity</span>
+    </div>
+    <div class="regime-row">
+      <span class="regime-score">45 – 59</span>
+      <span class="regime-name">Active</span>
+      <span class="regime-eq">55% equity</span>
+    </div>
+    <div class="regime-row">
+      <span class="regime-score">35 – 44</span>
+      <span class="regime-name">Cautious</span>
+      <span class="regime-eq">40% equity</span>
+    </div>
+    <div class="regime-row">
+      <span class="regime-score">25 – 34</span>
+      <span class="regime-name">Freeze</span>
+      <span class="regime-eq">25% equity</span>
+    </div>
+    <div class="regime-row">
+      <span class="regime-score">0 – 24</span>
+      <span class="regime-name">Exit All</span>
+      <span class="regime-eq">10% equity</span>
+    </div>
+  </div>
+</section>
+
+<section>
+  <h2><span class="num">iv</span> Safety override</h2>
+  <p>A single hardcoded safety rule sits above the band logic.</p>
+  <div class="pullquote">If Nifty TTM PE exceeds 26, equity allocation is capped at 70% regardless of regime.</div>
+  <p>Bubble valuations have historically preceded the deepest drawdowns. This override exists to refuse maximum exposure when the math is screaming &mdash; even when the regime score looks constructive.</p>
+</section>
+
+<section>
+  <h2><span class="num">v</span> What the system does not do</h2>
+  <p>This is a regime-allocation framework. It does not pick individual stocks, time entries and exits, or trade derivatives. Stock selection is handled by separate engines (Momentum Hunter, Value Warriors, Compounders, Fortress) that operate <em>within</em> the equity allocation Engine A sets.</p>
+  <p>The system runs on a weekly cadence. It does not react to intraday noise.</p>
+</section>
+
+<div class="disclaimer">
+  Parthsarthi Capital is a personal research framework. Information presented is for educational purposes and does not constitute investment advice. The framework has not been independently audited or registered with SEBI as a research analyst or investment adviser. Markets carry risk of capital loss. Past performance does not guarantee future results. Readers should conduct their own due diligence and consult a SEBI-registered advisor before making investment decisions.
+</div>
+
+<a href="index.html" class="nav-back">← back to dashboard</a>
+
+</body>
+</html>
