@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#0A1628">
+<title>Parthsarthi Capital · India Regime Engine</title>
+<meta name="description" content="A regime-reading investment system for Indian markets. 8 components, 26 sub-inputs, calibrated for SEBI-RIA discipline.">
+
+<!-- Open Graph for social sharing -->
+<meta property="og:title" content="Parthsarthi Capital">
+<meta property="og:description" content="Your charioteer in Indian markets.">
+<meta property="og:type" content="website">
+
+<!-- Favicon -->
+<link rel="icon" type="image/svg+xml" href="assets/logo.svg">
+
+<!-- Fonts: Fraunces (display serif) + DM Sans (body) + JetBrains Mono (data) -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght,SOFT@9..144,300..900,0..100&family=DM+Sans:opsz,wght@9..40,300..700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+Devanagari:wght@400;500;700&display=swap" rel="stylesheet">
+
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- Decorative chariot wheel watermark -->
+<div class="watermark" aria-hidden="true">
+  <svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">
+    <g fill="none" stroke="currentColor">
+      <circle cx="50" cy="50" r="48" stroke-width="0.4"/>
+      <circle cx="50" cy="50" r="35" stroke-width="0.3" stroke-dasharray="1,2"/>
+      <circle cx="50" cy="50" r="22" stroke-width="0.3"/>
+      <circle cx="50" cy="50" r="3" fill="currentColor"/>
+      <g stroke-width="0.4">
+        <line x1="50" y1="2" x2="50" y2="98"/>
+        <line x1="2" y1="50" x2="98" y2="50"/>
+        <line x1="16" y1="16" x2="84" y2="84"/>
+        <line x1="84" y1="16" x2="16" y2="84"/>
+      </g>
+    </g>
+  </svg>
+</div>
+
+<div class="page">
+
+  <!-- ============ HEADER ============ -->
+  <header class="masthead">
+    <div class="masthead-row">
+      <div class="brand">
+        <svg class="brand-mark" viewBox="0 0 64 64" aria-label="Parthsarthi Capital">
+          <circle cx="32" cy="32" r="28" stroke="currentColor" stroke-width="2.5" fill="none"/>
+          <circle cx="32" cy="32" r="4.5" fill="currentColor"/>
+          <g stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="32" y1="6" x2="32" y2="58"/>
+            <line x1="6" y1="32" x2="58" y2="32"/>
+            <line x1="13.6" y1="13.6" x2="50.4" y2="50.4"/>
+            <line x1="50.4" y1="13.6" x2="13.6" y2="50.4"/>
+          </g>
+          <circle cx="32" cy="32" r="14" stroke="currentColor" stroke-width="1" fill="none" stroke-dasharray="2,3" opacity="0.5"/>
+        </svg>
+        <div class="brand-words">
+          <div class="brand-name">Parthsarthi <span>Capital</span></div>
+          <div class="brand-sub-dev">पार्थसारथि</div>
+        </div>
+      </div>
+      <div class="masthead-meta">
+        <div class="meta-issue">India Regime Engine</div>
+        <div class="meta-date" id="meta-date">—</div>
+      </div>
+    </div>
+    <div class="tagline">
+      <span class="tagline-orn">◆</span>
+      Your charioteer in Indian markets
+      <span class="tagline-orn">◆</span>
+    </div>
+  </header>
+
+  <!-- ============ AUTO-DATA TICKER ============ -->
+  <section class="ticker" aria-label="Live market data">
+    <div class="ticker-track" id="ticker-track">
+      <!-- Populated by JS -->
+    </div>
+  </section>
+
+  <!-- ============ SCORE HERO ============ -->
+  <section class="hero">
+    <div class="hero-eyebrow">
+      <span class="eyebrow-line"></span>
+      <span class="eyebrow-text">Current Regime · Schema <span id="schema-version">v2.1</span></span>
+      <span class="eyebrow-line"></span>
+    </div>
+
+    <div class="score-wrap">
+      <div class="score-figure">
+        <span class="score-value" id="score-value">—</span>
+        <span class="score-divider">⁄</span>
+        <span class="score-max" id="score-max">100</span>
+      </div>
+      <div class="score-pct" id="score-pct">— of 100</div>
+    </div>
+
+    <div class="regime-badge" id="regime-badge" data-regime="loading">
+      <div class="regime-label" id="regime-label">Loading…</div>
+      <div class="regime-allocation">
+        <span class="allocation-figure" id="allocation-figure">—</span>
+        <span class="allocation-unit">% equity</span>
+      </div>
+    </div>
+
+    <p class="regime-guidance" id="regime-guidance">Fetching latest regime…</p>
+
+    <div class="hero-divider" aria-hidden="true">
+      <span></span><span></span><span></span>
+    </div>
+  </section>
+
+  <!-- ============ PENDING BANNER (only shows if needed) ============ -->
+  <section class="pending-banner" id="pending-banner" hidden>
+    <div class="pending-inner">
+      <div class="pending-icon">!</div>
+      <div class="pending-text">
+        <strong id="pending-count-text">— inputs pending</strong>
+        <span>Score reflects partial data. Update via Admin.</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COMPONENT RADAR ============ -->
+  <section class="section">
+    <h2 class="section-title">
+      <span class="section-num">i</span>
+      Component Health
+    </h2>
+    <p class="section-lede">Eight-axis read of the regime. Each axis = one component of the scoring framework. Closer to the rim = healthier.</p>
+
+    <div class="radar-wrap">
+      <svg class="radar" id="radar" viewBox="-150 -150 300 300" aria-label="Component health radar"></svg>
+    </div>
+  </section>
+
+  <!-- ============ COMPONENT CARDS ============ -->
+  <section class="section">
+    <h2 class="section-title">
+      <span class="section-num">ii</span>
+      Components
+    </h2>
+    <p class="section-lede">Tap any component to expand its sub-inputs.</p>
+
+    <div class="components" id="components">
+      <!-- Populated by JS -->
+    </div>
+  </section>
+
+  <!-- ============ SCORE HISTORY ============ -->
+  <section class="section">
+    <h2 class="section-title">
+      <span class="section-num">iii</span>
+      Regime History
+    </h2>
+    <p class="section-lede">Score evolution over time. Background bands mark regime thresholds.</p>
+
+    <div class="history-wrap">
+      <svg class="history" id="history" viewBox="0 0 600 240" preserveAspectRatio="none" aria-label="Score history"></svg>
+      <div class="history-empty" id="history-empty">
+        Building history. Each compute appends a point — check back in a few weeks.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ COLOPHON ============ -->
+  <footer class="colophon">
+    <div class="colophon-rule"></div>
+    <div class="colophon-grid">
+      <div>
+        <div class="colophon-label">Compiled</div>
+        <div class="colophon-value" id="footer-compute">—</div>
+      </div>
+      <div>
+        <div class="colophon-label">Schema</div>
+        <div class="colophon-value" id="footer-schema">v2.1</div>
+      </div>
+      <div>
+        <div class="colophon-label">Source</div>
+        <div class="colophon-value">Multi-engine framework</div>
+      </div>
+    </div>
+
+    <p class="disclaimer">
+      Parthsarthi Capital is a personal research framework. Information presented is for educational purposes and does not constitute investment advice. Markets carry risk of capital loss.
+    </p>
+
+    <div class="colophon-row">
+      <span>© Parthsarthi Capital · 2026</span>
+      <a class="manage-link" href="https://gqp.streamlit.app" target="_blank" rel="noopener">Manage →</a>
+    </div>
+  </footer>
+
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
