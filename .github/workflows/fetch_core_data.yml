@@ -3,7 +3,7 @@ name: Fetch Core Data (yfinance + Angel One)
 # ============================================================
 # Engine A Dashboard v2.1 — Core Data Fetch Workflow
 # ============================================================
-# Runs yfinance_core + angel_one_core + scrapers
+# Runs yfinance_core + angel_one_core + bond scraper
 # and commits results to data/core/*.csv
 #
 # Triggers:
@@ -11,28 +11,23 @@ name: Fetch Core Data (yfinance + Angel One)
 #   2. Manual: "Run workflow" button in Actions tab
 #   3. On push to main (only when fetcher code changes — for testing)
 #
-# NOTE: BSE MCap moved to Tier 4 manual monthly input (Step 9 dashboard).
+# NOTE: BSE MCap and Bharat Bond YTM moved to Tier 4 manual monthly input.
+# Both sites block GitHub Actions IPs. Manual entry via Streamlit dashboard.
 # ============================================================
 
 on:
   schedule:
-    # NSE trading hours: 9:00 AM – 4:00 PM IST = 03:30 – 10:30 UTC
-    # Run every 15 minutes during NSE hours, Monday–Friday
     - cron: '*/15 3-10 * * 1-5'
-    # Daily run at 4:00 AM IST = 22:30 UTC previous day (Sun-Thu nights)
     - cron: '30 22 * * 0-4'
 
   workflow_dispatch:
-    # Manual trigger from Actions tab — for on-demand fresh fetches
 
   push:
-    # Re-run automatically when fetcher code changes (for testing)
     branches: [main]
     paths:
       - 'fetchers/core/**'
       - '.github/workflows/fetch_core_data.yml'
 
-# Prevent overlapping runs — if a previous run is still going, queue this one
 concurrency:
   group: fetch-core-data
   cancel-in-progress: false
@@ -43,42 +38,27 @@ jobs:
     timeout-minutes: 10
 
     steps:
-      # ------------------------------------------------------
-      # 1. Get the repo
-      # ------------------------------------------------------
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GH_PAT }}
           fetch-depth: 1
 
-      # ------------------------------------------------------
-      # 2. Setup Python 3.11
-      # ------------------------------------------------------
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
 
-      # ------------------------------------------------------
-      # 3. Install dependencies
-      # ------------------------------------------------------
       - name: Install requirements
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
-      # ------------------------------------------------------
-      # 4. Run yfinance core fetcher
-      # ------------------------------------------------------
       - name: Fetch yfinance global data
         run: python fetchers/core/yfinance/fetch_yfinance_core.py
         continue-on-error: true
 
-      # ------------------------------------------------------
-      # 5. Run Angel One core fetcher
-      # ------------------------------------------------------
       - name: Fetch Angel One Indian data
         env:
           ANGEL_API_KEY:      ${{ secrets.ANGEL_API_KEY }}
@@ -88,35 +68,16 @@ jobs:
         run: python fetchers/core/angel_one/fetch_angel_one_core.py
         continue-on-error: true
 
-      # ------------------------------------------------------
-      # 6. Run bond yields scraper
-      # ------------------------------------------------------
       - name: Fetch bond yields (scraper)
         run: python fetchers/core/scrapers/fetch_bonds.py
         continue-on-error: true
 
-      # ------------------------------------------------------
-      # 7. Run Bharat Bond YTM scraper (AAA PSU proxy)
-      # ------------------------------------------------------
-      - name: Fetch Bharat Bond YTMs (scraper)
-        run: python fetchers/core/scrapers/fetch_bharat_bond.py
-        continue-on-error: true
-
-      # ------------------------------------------------------
-      # 8. Commit new CSV rows back to repo
-      # ------------------------------------------------------
       - name: Commit data changes
         run: |
           git config --local user.email "actions@github.com"
           git config --local user.name "Engine A Auto-Fetch"
-          
-          # Pull latest changes first to avoid push conflicts
           git pull --rebase origin main || true
-          
-          # Stage any changed CSV files
           git add data/core/*.csv 2>/dev/null || true
-          
-          # Only commit if something changed
           if git diff --cached --quiet; then
             echo "No data changes to commit."
           else
@@ -126,36 +87,26 @@ jobs:
             echo "Committed and pushed new data."
           fi
 
-      # ------------------------------------------------------
-      # 9. Show summary in workflow log
-      # ------------------------------------------------------
       - name: Display recent data
         if: always()
         run: |
-          echo "=== Latest yfinance data ==="
+          echo "=== yfinance data (last 7 rows) ==="
           if [ -f data/core/yfinance_global.csv ]; then
             tail -7 data/core/yfinance_global.csv
           else
             echo "yfinance_global.csv not found"
           fi
           echo ""
-          echo "=== Latest Angel One data ==="
+          echo "=== Angel One data (last 3 rows) ==="
           if [ -f data/core/angel_one_indian.csv ]; then
             tail -3 data/core/angel_one_indian.csv
           else
             echo "angel_one_indian.csv not found"
           fi
           echo ""
-          echo "=== Latest Bond Yields ==="
+          echo "=== Bond Yields (last 3 rows) ==="
           if [ -f data/core/bond_yields.csv ]; then
             tail -3 data/core/bond_yields.csv
           else
             echo "bond_yields.csv not found"
-          fi
-          echo ""
-          echo "=== Latest Bharat Bond YTMs ==="
-          if [ -f data/core/bharat_bond_ytm.csv ]; then
-            tail -5 data/core/bharat_bond_ytm.csv
-          else
-            echo "bharat_bond_ytm.csv not found"
           fi
