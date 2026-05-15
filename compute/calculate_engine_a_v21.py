@@ -76,13 +76,14 @@ ALLOCATION_BANDS = [
 MANUAL_RANGES = {
     "nifty_pe_ttm":       (5.0,    50.0),
     "nifty_pe_pctile":    (0.0,    100.0),
-    "mcap_gdp_pctile":    (0.0,    100.0),
-    "aaa_spread_pctile":  (0.0,    100.0),
+    "mcap_gdp_ratio":     (10.0,   400.0),    # raw % (India range ~25-290%)
+    "aaa_spread_bps":     (0.0,    500.0),    # raw basis points
     "credit_growth_yoy":  (-10.0,  30.0),
     "pct_above_200dma":   (0.0,    100.0),
-    "fii_30d":            (-200000.0, 200000.0),
-    "dii_30d":            (-100000.0, 200000.0),
+    "fii_latest_month":   (-200000.0, 200000.0),   # single month total
+    "dii_latest_month":   (-100000.0, 200000.0),   # single month total
     "sip_yoy":            (-30.0,  50.0),
+    "cpi_yoy_latest":     (-2.0,   15.0),     # raw CPI %
     "pmi_mfg":            (30.0,   70.0),
     "gst_yoy":            (-30.0,  50.0),
 }
@@ -136,9 +137,49 @@ def percentile_rank(series: pd.Series, value: float):
         return None
 
 
+def load_manual_inputs_df() -> pd.DataFrame:
+    """
+    NEW in v2.1: Return FULL manual_inputs.csv as DataFrame for history lookups
+    (e.g. CPI direction needs last 3 saves of cpi_yoy_latest).
+    Empty DataFrame if CSV missing.
+    """
+    cols = ["timestamp_ist", "field", "value", "note"]
+    if not MANUAL_INPUTS_CSV.exists():
+        return pd.DataFrame(columns=cols)
+    try:
+        df = pd.read_csv(MANUAL_INPUTS_CSV)
+        if df.empty:
+            return pd.DataFrame(columns=cols)
+        df = df.sort_values("timestamp_ist")
+        return df
+    except Exception as e:
+        print(f"WARN: Failed to load manual_inputs.csv as DataFrame: {e}")
+        return pd.DataFrame(columns=cols)
+
+
+def get_field_history(df: pd.DataFrame, field: str, n: int = 3) -> list:
+    """
+    Return last n numeric values for a field, oldest -> newest.
+    Used by score_cpi_yoy_with_direction to derive 3M trend automatically.
+    """
+    if df.empty:
+        return []
+    field_df = df[df["field"] == field]
+    if field_df.empty:
+        return []
+    values = []
+    for _, row in field_df.tail(n).iterrows():
+        try:
+            v = float(row["value"])
+            values.append(v)
+        except (TypeError, ValueError):
+            continue
+    return values
+
+
 def load_manual_inputs() -> dict:
     """
-    NEW in v2: Read manual_inputs.csv (long format) and return latest value
+    Read manual_inputs.csv (long format) and return latest value
     per field. Returns dict: {field_key: value}.
 
     Empty dict if CSV missing or empty — every field will be PENDING_MANUAL.
@@ -420,40 +461,46 @@ def score_nifty_pe_pctile(val) -> dict:
                     f"({'cheap' if v <= 30 else 'fair' if v <= 60 else 'expensive'})"}
 
 
-def score_mcap_gdp_pctile(val) -> dict:
-    """MCap/GDP 20Y percentile.  6 pts. Low = cheap = good."""
+def score_mcap_gdp_ratio(val) -> dict:
+    """
+    MCap/GDP raw ratio %.  6 pts.  v2.1: takes RAW % (e.g. 242.75), not percentile.
+    Bands calibrated to India's 20Y range (25-290%, median ~87%, +1σ ~127%).
+    """
     if val is None:
-        return _pending("MCap/GDP 20Y percentile", 6)
-    v, err = _validate_numeric(val, "mcap_gdp_pctile")
+        return _pending("MCap/GDP ratio (raw %)", 6)
+    v, err = _validate_numeric(val, "mcap_gdp_ratio")
     if err:
-        return _error(6, f"mcap_gdp_pctile {err}")
-    if v <= 20:    score = 6
-    elif v <= 40:  score = 4
-    elif v <= 60:  score = 2
-    elif v <= 80:  score = 1
-    else:          score = 0
-    return {"value": round(v, 1), "score": score, "max": 6, "status": "OK",
-            "note": f"MCap/GDP at {v:.1f}th percentile of 20Y "
-                    f"({'undervalued' if v <= 30 else 'fair' if v <= 60 else 'stretched'})"}
+        return _error(6, f"mcap_gdp_ratio {err}")
+    if v <= 55:     score = 6  # deeply undervalued (below -1σ)
+    elif v <= 80:   score = 4  # undervalued
+    elif v <= 110:  score = 2  # fair (around median)
+    elif v <= 160:  score = 1  # expensive (above +1σ)
+    else:           score = 0  # very expensive (near peaks)
+    return {"value": round(v, 2), "score": score, "max": 6, "status": "OK",
+            "note": f"MCap/GDP {v:.1f}% "
+                    f"({'deep value' if v <= 55 else 'undervalued' if v <= 80 else 'fair' if v <= 110 else 'expensive' if v <= 160 else 'very expensive'})"}
 
 
 # ---------- C2: Credit & Rates manuals ----------
 
-def score_aaa_spread_pctile(val) -> dict:
-    """AAA-GSec spread 5Y percentile.  8 pts. Low percentile = tight spread = healthy."""
+def score_aaa_spread_bps(val) -> dict:
+    """
+    AAA-GSec spread RAW bps.  8 pts.  v2.1: takes RAW basis points (e.g. 73), not percentile.
+    Bands calibrated to India's 5Y range (30 bps tight - 200+ bps crisis).
+    """
     if val is None:
-        return _pending("AAA-GSec spread 5Y percentile", 8)
-    v, err = _validate_numeric(val, "aaa_spread_pctile")
+        return _pending("AAA-GSec spread (raw bps)", 8)
+    v, err = _validate_numeric(val, "aaa_spread_bps")
     if err:
-        return _error(8, f"aaa_spread_pctile {err}")
-    if v <= 20:    score = 8
-    elif v <= 40:  score = 6
-    elif v <= 60:  score = 4
-    elif v <= 80:  score = 2
-    else:          score = 0
-    return {"value": round(v, 1), "score": score, "max": 8, "status": "OK",
-            "note": f"AAA spread at {v:.1f}th percentile of 5Y "
-                    f"({'tight, healthy credit' if v <= 30 else 'normal' if v <= 60 else 'wide, stress'})"}
+        return _error(8, f"aaa_spread_bps {err}")
+    if v <= 50:     score = 8  # very tight, excellent credit conditions
+    elif v <= 75:   score = 6  # tight, healthy
+    elif v <= 100:  score = 4  # normal
+    elif v <= 150:  score = 2  # widening, stress emerging
+    else:           score = 0  # crisis-level
+    return {"value": round(v, 0), "score": score, "max": 8, "status": "OK",
+            "note": f"AAA-GSec spread {v:.0f} bps "
+                    f"({'very tight' if v <= 50 else 'tight, healthy' if v <= 75 else 'normal' if v <= 100 else 'wide, stress' if v <= 150 else 'crisis'})"}
 
 
 def score_credit_growth_yoy(val) -> dict:
@@ -493,37 +540,43 @@ def score_pct_above_200dma(val) -> dict:
 
 # ---------- C5: Flows manuals ----------
 
-def score_fii_30d(val) -> dict:
-    """FII 30D net flow.  5 pts. Positive = inflow = good."""
+def score_fii_latest_month(val) -> dict:
+    """
+    FII latest-month net flow.  5 pts.  v2.1: single month total (e.g. -60850 for April 2026).
+    Bands calibrated to monthly FII data (May 2025 +27,856 best in 26mo, March 2026 -117,774 record outflow).
+    """
     if val is None:
-        return _pending("FII 30D net flow", 5)
-    v, err = _validate_numeric(val, "fii_30d")
+        return _pending("FII latest month net flow", 5)
+    v, err = _validate_numeric(val, "fii_latest_month")
     if err:
-        return _error(5, f"fii_30d {err}")
-    if v > 30000:     score = 5
+        return _error(5, f"fii_latest_month {err}")
+    if v > 25000:     score = 5  # strong inflow month
     elif v > 10000:   score = 4
     elif v > 0:       score = 3
-    elif v > -15000:  score = 1
-    else:             score = 0
+    elif v > -20000:  score = 1
+    else:             score = 0  # heavy outflow month
     return {"value": round(v, 0), "score": score, "max": 5, "status": "OK",
-            "note": f"FII 30D net flow {v:+,.0f} Cr "
-                    f"({'strong inflow' if v > 30000 else 'inflow' if v > 0 else 'outflow' if v > -15000 else 'heavy outflow'})"}
+            "note": f"FII latest month {v:+,.0f} Cr "
+                    f"({'strong inflow' if v > 25000 else 'inflow' if v > 0 else 'outflow' if v > -20000 else 'heavy outflow'})"}
 
 
-def score_dii_30d(val) -> dict:
-    """DII 30D net flow.  4 pts. Positive = domestic confidence = good."""
+def score_dii_latest_month(val) -> dict:
+    """
+    DII latest-month net flow.  4 pts.  v2.1: single month total (e.g. 45000).
+    Bands calibrated to recent SIP-driven monthly DII (~30-50K Cr is normal).
+    """
     if val is None:
-        return _pending("DII 30D net flow", 4)
-    v, err = _validate_numeric(val, "dii_30d")
+        return _pending("DII latest month net flow", 4)
+    v, err = _validate_numeric(val, "dii_latest_month")
     if err:
-        return _error(4, f"dii_30d {err}")
-    if v > 25000:     score = 4
-    elif v > 10000:   score = 3
+        return _error(4, f"dii_latest_month {err}")
+    if v > 40000:     score = 4  # very strong domestic bid
+    elif v > 20000:   score = 3  # normal SIP-driven
     elif v > 0:       score = 2
-    else:             score = 0
+    else:             score = 0  # capitulation
     return {"value": round(v, 0), "score": score, "max": 4, "status": "OK",
-            "note": f"DII 30D net flow {v:+,.0f} Cr "
-                    f"({'strong' if v > 25000 else 'normal' if v > 0 else 'outflow'})"}
+            "note": f"DII latest month {v:+,.0f} Cr "
+                    f"({'very strong' if v > 40000 else 'normal' if v > 20000 else 'weak' if v > 0 else 'capitulation'})"}
 
 
 def score_sip_yoy(val) -> dict:
@@ -558,19 +611,40 @@ def score_rbi_stance(val) -> dict:
             "note": f"RBI stance: {s}"}
 
 
-def score_cpi_yoy_direction(val) -> dict:
-    """CPI YoY direction (3M trend). 3 pts. Categorical."""
+def score_cpi_yoy_with_direction(val, manual_df) -> dict:
+    """
+    CPI YoY scoring with AUTO-DERIVED direction. 3 pts.  v2.1: takes raw latest CPI %.
+    Reads last 3 saves of cpi_yoy_latest from manual_inputs.csv to compute 3M trend.
+    Threshold: ±0.3pp over the 3-reading span = direction change.
+    Falls back to 'Stable' (2 pts) if <3 history readings.
+    """
     if val is None:
-        return _pending("CPI YoY direction", 3)
-    s = str(val).strip()
-    if s == "Falling":   score = 3
-    elif s == "Stable":  score = 2
-    elif s == "Rising":  score = 0
+        return _pending("CPI YoY latest (auto-direction)", 3)
+    v, err = _validate_numeric(val, "cpi_yoy_latest")
+    if err:
+        return _error(3, f"cpi_yoy_latest {err}")
+
+    history = get_field_history(manual_df, "cpi_yoy_latest", n=3)
+    if len(history) < 3:
+        # Not enough history yet — default to Stable, note the limitation
+        return {"value": round(v, 2), "score": 2, "max": 3, "status": "OK",
+                "note": f"CPI {v:.2f}% — insufficient history ({len(history)}/3 readings), "
+                        f"defaulting to Stable. Direction auto-derives after 3 monthly saves."}
+
+    oldest, _, latest = history[0], history[1], history[-1]
+    delta = latest - oldest
+    if delta > 0.3:
+        direction = "Rising"
+        score = 0
+    elif delta < -0.3:
+        direction = "Falling"
+        score = 3
     else:
-        return _error(3, f"cpi_yoy_direction unknown value: {s!r}")
-    return {"value": s, "score": score, "max": 3, "status": "OK",
-            "note": f"CPI 3M trend: {s} "
-                    f"({'disinflation' if s == 'Falling' else 'anchored' if s == 'Stable' else 'forces tighter policy'})"}
+        direction = "Stable"
+        score = 2
+    return {"value": round(v, 2), "score": score, "max": 3, "status": "OK",
+            "note": f"CPI 3M: {history[0]:.2f} \u2192 {history[1]:.2f} \u2192 {history[-1]:.2f} "
+                    f"= {direction} (\u0394{delta:+.2f}pp)"}
 
 
 def score_pmi_mfg(val) -> dict:
@@ -657,21 +731,22 @@ def compute_engine_a():
     gsec_10y      = read_latest_value(BONDS_CSV, "india-10-year-bond-yield")
     gsec_2y       = read_latest_value(BONDS_CSV, "india-2-year-bond-yield")
 
-    # ---- Load manual inputs (v2 NEW) ----
+    # ---- Load manual inputs (v2.1: latest dict + full DataFrame for history) ----
     manual = load_manual_inputs()
-    nifty_pe         = manual.get("nifty_pe_ttm")
-    nifty_pe_pctile  = manual.get("nifty_pe_pctile")
-    mcap_gdp_pctile  = manual.get("mcap_gdp_pctile")
-    aaa_spread_pct   = manual.get("aaa_spread_pctile")
-    credit_growth    = manual.get("credit_growth_yoy")
-    pct_above_200dma = manual.get("pct_above_200dma")
-    fii_30d          = manual.get("fii_30d")
-    dii_30d          = manual.get("dii_30d")
-    sip_yoy          = manual.get("sip_yoy")
-    rbi_stance       = manual.get("rbi_stance")
-    cpi_direction    = manual.get("cpi_yoy_direction")
-    pmi_mfg          = manual.get("pmi_mfg")
-    gst_yoy          = manual.get("gst_yoy")
+    manual_df = load_manual_inputs_df()
+    nifty_pe          = manual.get("nifty_pe_ttm")
+    nifty_pe_pctile   = manual.get("nifty_pe_pctile")
+    mcap_gdp_ratio    = manual.get("mcap_gdp_ratio")          # v2.1: raw %, not pctile
+    aaa_spread_bps    = manual.get("aaa_spread_bps")          # v2.1: raw bps, not pctile
+    credit_growth     = manual.get("credit_growth_yoy")
+    pct_above_200dma  = manual.get("pct_above_200dma")
+    fii_latest_month  = manual.get("fii_latest_month")        # v2.1: single month
+    dii_latest_month  = manual.get("dii_latest_month")        # v2.1: single month
+    sip_yoy           = manual.get("sip_yoy")
+    rbi_stance        = manual.get("rbi_stance")
+    cpi_yoy_latest    = manual.get("cpi_yoy_latest")          # v2.1: raw %, auto-direction
+    pmi_mfg           = manual.get("pmi_mfg")
+    gst_yoy           = manual.get("gst_yoy")
 
     print(f"Auto data:")
     print(f"  Nifty 50:    {nifty_50}")
@@ -697,13 +772,13 @@ def compute_engine_a():
             "sub_inputs": {
                 "yield_gap":        score_yield_gap(nifty_pe, gsec_10y),
                 "nifty_pe_pctile":  score_nifty_pe_pctile(nifty_pe_pctile),
-                "mcap_gdp_pctile":  score_mcap_gdp_pctile(mcap_gdp_pctile),
+                "mcap_gdp_ratio":   score_mcap_gdp_ratio(mcap_gdp_ratio),
             }
         },
         "C2_credit_rates": {
             "weight": 14, "name": "Credit & Rates",
             "sub_inputs": {
-                "aaa_spread_pctile":  score_aaa_spread_pctile(aaa_spread_pct),
+                "aaa_spread_bps":     score_aaa_spread_bps(aaa_spread_bps),
                 "yield_curve_10y_2y": score_yield_curve(gsec_10y, gsec_2y),
                 "credit_growth_yoy":  score_credit_growth_yoy(credit_growth),
             }
@@ -725,18 +800,18 @@ def compute_engine_a():
         "C5_flows": {
             "weight": 12, "name": "Flows",
             "sub_inputs": {
-                "fii_30d":   score_fii_30d(fii_30d),
-                "dii_30d":   score_dii_30d(dii_30d),
-                "sip_yoy":   score_sip_yoy(sip_yoy),
+                "fii_latest_month":  score_fii_latest_month(fii_latest_month),
+                "dii_latest_month":  score_dii_latest_month(dii_latest_month),
+                "sip_yoy":           score_sip_yoy(sip_yoy),
             }
         },
         "C6_macro_india": {
             "weight": 12, "name": "Macro India",
             "sub_inputs": {
-                "rbi_stance":        score_rbi_stance(rbi_stance),
-                "cpi_yoy":           score_cpi_yoy_direction(cpi_direction),
-                "pmi_mfg":           score_pmi_mfg(pmi_mfg),
-                "gst_yoy":           score_gst_yoy(gst_yoy),
+                "rbi_stance":   score_rbi_stance(rbi_stance),
+                "cpi_yoy":      score_cpi_yoy_with_direction(cpi_yoy_latest, manual_df),
+                "pmi_mfg":      score_pmi_mfg(pmi_mfg),
+                "gst_yoy":      score_gst_yoy(gst_yoy),
             }
         },
         "C7_global_cross_asset": {
