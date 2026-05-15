@@ -88,6 +88,8 @@ MANUAL_FIELDS = [
         "min": 5.0, "max": 50.0, "step": 0.1, "default": 22.0,
         "help": "From Trendlyne. Feeds Yield Gap calc.",
         "cadence": "Monthly",
+        "source_url": "https://trendlyne.com/equity/PE/NIFTY/1887/nifty-50-price-to-earning-ratios/",
+        "source_label": "Trendlyne Nifty PE",
     },
     {
         "key": "nifty_pe_pctile",
@@ -96,6 +98,8 @@ MANUAL_FIELDS = [
         "min": 0, "max": 100, "step": 1, "default": 50,
         "help": "10-year historical percentile of current PE. Low = cheap.",
         "cadence": "Monthly",
+        "source_url": "https://trendonify.com/india/stock-market/pe-ratio",
+        "source_label": "Trendonify PE percentile",
     },
     {
         "key": "mcap_gdp_pctile",
@@ -104,6 +108,8 @@ MANUAL_FIELDS = [
         "min": 0, "max": 100, "step": 1, "default": 50,
         "help": "20Y percentile of total India MCap / nominal GDP.",
         "cadence": "Monthly",
+        "source_url": "https://www.gurufocus.com/economic_indicators/4324/india-ratio-of-total-market-cap-over-gdp",
+        "source_label": "GuruFocus India MCap/GDP",
     },
     {
         "key": "aaa_spread_pctile",
@@ -112,6 +118,8 @@ MANUAL_FIELDS = [
         "min": 0, "max": 100, "step": 1, "default": 50,
         "help": "5Y percentile of AAA bond yield minus G-Sec. Tight = healthy.",
         "cadence": "Monthly",
+        "source_url": "https://indiamacroindicators.co.in/economic-indicators/10-year-credit-spread-aaa-rated-bonds-g-sec",
+        "source_label": "India Macro AAA spread",
     },
     {
         "key": "credit_growth_yoy",
@@ -120,6 +128,8 @@ MANUAL_FIELDS = [
         "min": -10.0, "max": 30.0, "step": 0.1, "default": 12.0,
         "help": "RBI weekly press release.",
         "cadence": "Bi-weekly",
+        "source_url": "https://www.rbi.org.in/Scripts/WSSView.aspx",
+        "source_label": "RBI Weekly Stats",
     },
     {
         "key": "pct_above_200dma",
@@ -128,6 +138,8 @@ MANUAL_FIELDS = [
         "min": 0, "max": 100, "step": 1, "default": 50,
         "help": "Breadth. >70% = broad strength.",
         "cadence": "Weekly",
+        "source_url": "https://trendlyne.com/markets-today/all-stocks/India/CRSL500/Nifty-500/",
+        "source_label": "Trendlyne Nifty 500 breadth",
     },
     {
         "key": "fii_30d",
@@ -136,6 +148,8 @@ MANUAL_FIELDS = [
         "min": -100000.0, "max": 100000.0, "step": 100.0, "default": 0.0,
         "help": "Sum of 30 trading days. Negative = outflow.",
         "cadence": "Daily/Weekly",
+        "source_url": "https://www.fpi.nsdl.co.in/web/Reports/Latest.aspx",
+        "source_label": "NSDL FPI flows",
     },
     {
         "key": "dii_30d",
@@ -144,6 +158,8 @@ MANUAL_FIELDS = [
         "min": -50000.0, "max": 100000.0, "step": 100.0, "default": 5000.0,
         "help": "Sum of 30 trading days.",
         "cadence": "Daily/Weekly",
+        "source_url": "https://www.nseindia.com/reports/fii-dii",
+        "source_label": "NSE FII/DII",
     },
     {
         "key": "sip_yoy",
@@ -152,6 +168,8 @@ MANUAL_FIELDS = [
         "min": -30.0, "max": 50.0, "step": 0.5, "default": 15.0,
         "help": "AMFI monthly release.",
         "cadence": "Monthly",
+        "source_url": "https://www.amfiindia.com/research-information/amfi-monthly",
+        "source_label": "AMFI Monthly Note",
     },
     {
         "key": "rbi_stance",
@@ -161,6 +179,8 @@ MANUAL_FIELDS = [
         "default": "Neutral",
         "help": "Per latest MPC statement.",
         "cadence": "Per MPC (~6/year)",
+        "source_url": "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx",
+        "source_label": "RBI MPC press releases",
     },
     {
         "key": "cpi_yoy_direction",
@@ -170,6 +190,8 @@ MANUAL_FIELDS = [
         "default": "Stable",
         "help": "Trend over last 3 monthly readings.",
         "cadence": "Monthly (12th)",
+        "source_url": "https://tradingeconomics.com/india/inflation-cpi",
+        "source_label": "Trading Economics India CPI",
     },
     {
         "key": "pmi_mfg",
@@ -178,6 +200,8 @@ MANUAL_FIELDS = [
         "min": 40.0, "max": 65.0, "step": 0.1, "default": 53.0,
         "help": ">50 = expansion. S&P Global India release.",
         "cadence": "Monthly (1st)",
+        "source_url": "https://tradingeconomics.com/india/manufacturing-pmi",
+        "source_label": "Trading Economics India PMI",
     },
     {
         "key": "gst_yoy",
@@ -186,6 +210,8 @@ MANUAL_FIELDS = [
         "min": -30.0, "max": 50.0, "step": 0.5, "default": 12.0,
         "help": "PIB monthly release.",
         "cadence": "Monthly (1st)",
+        "source_url": "https://pib.gov.in/AllRelease.aspx",
+        "source_label": "PIB GST releases",
     },
 ]
 
@@ -492,6 +518,15 @@ def render_field(field_cfg, current_value, current_ts):
     else:
         st.caption(
             f"**{key}**  \u00b7  *never set*  \u00b7  cadence: {field_cfg['cadence']}"
+        )
+
+    # Source link (NEW): tappable link to fetch the current value
+    source_url = field_cfg.get("source_url")
+    source_label = field_cfg.get("source_label", "source")
+    if source_url:
+        st.markdown(
+            f"\u2192 [Open {source_label}]({source_url})",
+            unsafe_allow_html=False,
         )
 
     if ftype == "number":
