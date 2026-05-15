@@ -1,13 +1,18 @@
 {
   "schema_version": "v2.1",
-  "computed_at_ist": "2026-05-15 19:55:37",
-  "score": 45,
+  "computed_at_ist": "2026-05-16 01:58:39",
+  "last_compute": "2026-05-16 01:58:39",
+  "score": 44,
+  "max_available": 100,
   "max_available_today": 100,
   "max_theoretical": 100,
-  "score_pct_of_max_available": 45.0,
-  "regime": "ACTIVE",
-  "regime_equity_pct": 55,
+  "score_pct_of_max_available": 44.0,
+  "regime": "CAUTIOUS",
+  "equity_allocation": 40,
+  "regime_equity_pct": 40,
+  "guidance": "Selective adds only",
   "safety_override": null,
+  "pending_count": 0,
   "pending_manual_count": 0,
   "stale_inputs_count": 0,
   "pending_manual": [],
@@ -78,11 +83,11 @@
       "name": "Trend & Breadth",
       "sub_inputs": {
         "nifty_vs_200dma": {
-          "value": -5.56,
+          "value": -5.58,
           "score": 0,
           "max": 7,
           "status": "OK",
-          "note": "Nifty 23644 vs 200DMA 25035 = -5.56%"
+          "note": "Nifty 23644 vs 200DMA 25042 = -5.58%"
         },
         "pct_above_200dma": {
           "value": 43.0,
@@ -108,11 +113,11 @@
           "note": "VIX 18.79 = 83.6th percentile of 5Y"
         },
         "vix_vs_30d_avg": {
-          "value": -2.88,
+          "value": -2.98,
           "score": 2,
           "max": 4,
           "status": "OK",
-          "note": "VIX 18.79 vs 30D avg 19.35 = -2.88%"
+          "note": "VIX 18.79 vs 30D avg 19.37 = -2.98%"
         }
       },
       "score": 2,
@@ -161,18 +166,18 @@
           "note": "RBI stance: Neutral"
         },
         "cpi_yoy": {
-          "value": 3.54,
+          "value": 3.48,
           "score": 2,
           "max": 3,
           "status": "OK",
-          "note": "CPI 3.54% \u2014 insufficient history (2/3 readings), defaulting to Stable. Direction auto-derives after 3 monthly saves."
+          "note": "CPI 3M: 3.54 \u2192 3.54 \u2192 3.48 = Stable (\u0394-0.06pp)"
         },
         "pmi_mfg": {
-          "value": 54.9,
+          "value": 54.7,
           "score": 2,
           "max": 3,
           "status": "OK",
-          "note": "PMI 54.9 (expansion)"
+          "note": "PMI 54.7 (expansion)"
         },
         "gst_yoy": {
           "value": 8.2,
@@ -191,25 +196,25 @@
       "name": "Global Cross-Asset",
       "sub_inputs": {
         "us_10y_direction": {
-          "value": 24.0,
-          "score": 1,
+          "value": 26.0,
+          "score": 0,
           "max": 2,
           "status": "OK",
-          "note": "US10Y +24.0 bps over 30D"
+          "note": "US10Y +26.0 bps over 30D"
         },
         "dxy": {
-          "value": 99.23,
+          "value": 99.3,
           "score": 2,
           "max": 2,
           "status": "OK",
-          "note": "DXY 99.23"
+          "note": "DXY 99.30"
         },
         "us_vix": {
-          "value": 18.76,
+          "value": 18.49,
           "score": 2,
           "max": 3,
           "status": "OK",
-          "note": "US VIX 18.76"
+          "note": "US VIX 18.49"
         },
         "inr_direction": {
           "value": 3.21,
@@ -219,27 +224,27 @@
           "note": "INR/USD +3.21% over 30D (positive = INR weaker)"
         },
         "gold_inr_vs_6m": {
-          "value": 7.19,
+          "value": 7.25,
           "score": 1,
           "max": 3,
           "status": "OK",
-          "note": "GOLDBEES 129.41 vs 6M avg 120.74 = +7.19%"
+          "note": "GOLDBEES 129.41 vs 6M avg 120.66 = +7.25%"
         }
       },
-      "score": 6,
+      "score": 5,
       "max_available": 12,
-      "pct_of_max_available": 50.0
+      "pct_of_max_available": 41.7
     },
     "C8_crude": {
       "weight": 5,
       "name": "Crude",
       "sub_inputs": {
         "brent_vs_6m": {
-          "value": 32.64,
+          "value": 34.18,
           "score": 0,
           "max": 5,
           "status": "OK",
-          "note": "Brent $108.26 vs 6M avg $81.62 = +32.64%"
+          "note": "Brent $109.53 vs 6M avg $81.63 = +34.18%"
         }
       },
       "score": 0,
@@ -250,11 +255,11 @@
   "raw_inputs": {
     "nifty_50": 23643.5,
     "india_vix": 18.79,
-    "us_10y": 4.575,
-    "dxy": 99.229,
-    "us_vix": 18.76,
+    "us_10y": 4.595,
+    "dxy": 99.299,
+    "us_vix": 18.49,
     "inr_usd": 95.955,
-    "brent_crude": 108.26,
+    "brent_crude": 109.53,
     "goldbees": 129.41,
     "gsec_10y": 7.064,
     "gsec_2y": 6.473
@@ -270,8 +275,8 @@
     "dii_latest_month",
     "sip_yoy",
     "rbi_stance",
+    "gst_yoy",
     "cpi_yoy_latest",
-    "pmi_mfg",
-    "gst_yoy"
+    "pmi_mfg"
   ]
 }
