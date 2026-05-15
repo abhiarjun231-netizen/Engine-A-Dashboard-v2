@@ -25,7 +25,7 @@ from pathlib import Path
 
 import pandas as pd
 import streamlit as st
-from streamlit_autorefresh import st_autorefresh
+from streamlit.errors import StreamlitAPIException  # noqa: F401
 
 # Make sibling module github_io.py importable when run via `streamlit run`
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -422,8 +422,8 @@ def render_dashboard():
     top_l, top_r = st.columns([3, 1])
     with top_l:
         st.caption(
-            f"Auto-refresh every {REFRESH_INTERVAL_SEC // 60} min. "
-            f"Tap refresh for instant update."
+            "Tap **Refresh** to load latest computed score. "
+            "Data updates every 15 min via background cron during NSE hours."
         )
     with top_r:
         if st.button("Refresh", use_container_width=True, key="refresh_dash"):
@@ -725,12 +725,8 @@ def main():
 
     st.markdown("# Engine A v2.1")
 
-    # Pause autorefresh when admin is logged in (avoid disrupting form entry)
-    if not st.session_state.get("admin_authed"):
-        st_autorefresh(
-            interval=REFRESH_INTERVAL_SEC * 1000,
-            key="engine_a_autorefresh",
-        )
+    # NO auto-refresh: causes form data loss + forced logout on Admin tab.
+    # Use the manual Refresh button in Dashboard tab to update data on demand.
 
     tab_dashboard, tab_admin = st.tabs(["Dashboard", "Admin"])
 
