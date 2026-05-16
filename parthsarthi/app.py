@@ -1,95 +1,196 @@
 """
 app.py
-Parthsarthi Capital - Phase 6, Item 6.1
-THE DASHBOARD - Streamlit admin interface with CSV upload.
+Parthsarthi Capital - Dashboard (UI rebuild).
 
-This is the entry point of the usable product. It is a thin router:
-a sidebar of tabs, and an admin panel where the three engine
-screener CSVs are uploaded. The heavy logic lives in the engine
-and Portfolio Master modules already built; this file only wires
-the interface to them.
-
-Phase 6 builds the dashboard tab by tab:
-  6.1 - this file: admin + CSV upload (the shell)
-  6.2 - decision view
-  6.3 - portfolio view
-  6.4 - journal view
-  6.5 - AI narration layer
-  6.6 - public dashboard tab
+The entry point and router for the dashboard. This rebuild fixes the
+earlier UI problems: faint "ghost" text, the unstyled red button, and
+loose layout. Styling is done with strong, high-specificity CSS that
+overrides Streamlit's defaults rather than fighting them.
 
 Run locally:   streamlit run app.py
-Deploy (6.7):  Streamlit Community Cloud, pointed at the GitHub repo.
+Deploy:        Streamlit Community Cloud, main file parthsarthi/app.py
 """
 
 import streamlit as st
 from datetime import datetime
 
-# Parthsarthi brand palette
+# ---- Parthsarthi brand palette ----
 NAVY    = '#0A1628'
 CREAM   = '#FDFBF5'
 SAFFRON = '#D97706'
+INK     = '#2A3340'
+GREEN   = '#16a34a'
 
 
 def match_engine(filename):
     """
     Match an uploaded screener CSV to its engine by filename.
     Trendlyne exports keep distinctive prefixes:
-      Mom...   -> Engine B (Momentum)
-      C2...    -> Engine C (Value)
-      D1...    -> Engine D (Compounders)
-    Returns 'B', 'C', 'D', or None if no prefix matches.
+      Mom...  -> Engine B (Momentum)
+      C2...   -> Engine C (Value)
+      D1...   -> Engine D (Compounders)
+    Returns 'B', 'C', 'D', or None.
     """
     name = filename.lower()
     if name.startswith('mom') or 'momentum' in name:
         return 'B'
-    if name.startswith('c2') or 'c2_value' in name:
+    if name.startswith('c2') or 'c2_value' in name or 'c2 value' in name:
         return 'C'
-    if name.startswith('d1') or 'd1_compound' in name:
+    if name.startswith('d1') or 'd1_compound' in name or 'd1 compound' in name:
         return 'D'
     return None
 
 
 def setup_page():
-    """Page config and brand styling."""
+    """Page config and the full brand stylesheet."""
     st.set_page_config(
         page_title='Parthsarthi Capital',
         page_icon='*',
-        layout='wide',
+        layout='centered',
         initial_sidebar_state='expanded',
     )
+
+    # Strong, high-specificity CSS. Every rule uses !important so it
+    # overrides Streamlit's default theme cleanly - this is what fixes
+    # the faint text and the red button.
     st.markdown(f"""
         <style>
-        .stApp {{ background-color: {CREAM}; }}
-        h1, h2, h3 {{ color: {NAVY}; }}
-        .brand-bar {{
-            background-color: {NAVY}; color: {CREAM};
-            padding: 14px 20px; border-radius: 8px; margin-bottom: 18px;
+        /* ---- base canvas ---- */
+        .stApp {{
+            background-color: {CREAM} !important;
         }}
-        .brand-bar .name {{ font-size: 22px; font-weight: 700; }}
-        .brand-bar .tag  {{ font-size: 13px; color: {SAFFRON}; }}
+        .block-container {{
+            padding-top: 2rem !important;
+            padding-bottom: 3rem !important;
+            max-width: 760px !important;
+        }}
+
+        /* ---- force ALL text to dark ink (kills the ghost text) ---- */
+        .stApp, .stApp p, .stApp span, .stApp label, .stApp div,
+        .stMarkdown, [data-testid="stMarkdownContainer"] {{
+            color: {INK} !important;
+        }}
+
+        /* ---- headings - crisp navy ---- */
+        .stApp h1, .stApp h2, .stApp h3, .stApp h4,
+        [data-testid="stHeading"] {{
+            color: {NAVY} !important;
+            font-weight: 700 !important;
+        }}
+        .stApp h1 {{ font-size: 1.7rem !important; }}
+        .stApp h2 {{ font-size: 1.3rem !important; margin-top: 0.5rem !important; }}
+        .stApp h3 {{ font-size: 1.05rem !important; }}
+
+        /* ---- all buttons - navy, no red ---- */
+        .stButton > button {{
+            background-color: {NAVY} !important;
+            color: {CREAM} !important;
+            border: none !important;
+            border-radius: 8px !important;
+            font-weight: 600 !important;
+            padding: 0.55rem 1.4rem !important;
+            width: 100% !important;
+        }}
+        .stButton > button:hover {{
+            background-color: {SAFFRON} !important;
+            color: {NAVY} !important;
+        }}
+        .stButton > button:active, .stButton > button:focus {{
+            background-color: {SAFFRON} !important;
+            color: {NAVY} !important;
+            box-shadow: none !important;
+        }}
+
+        /* ---- inputs ---- */
+        [data-testid="stNumberInput"] input,
+        [data-testid="stTextInput"] input {{
+            background-color: #FFFFFF !important;
+            color: {NAVY} !important;
+            border: 1px solid #E5E0D5 !important;
+        }}
+
+        /* ---- file uploader ---- */
+        [data-testid="stFileUploader"] {{
+            background-color: #FFFFFF !important;
+            border: 1.5px dashed #C9C2B0 !important;
+            border-radius: 10px !important;
+            padding: 6px !important;
+        }}
+        [data-testid="stFileUploader"] section {{
+            background-color: #FFFFFF !important;
+        }}
+
+        /* ---- expanders ---- */
+        [data-testid="stExpander"] {{
+            border: 1px solid #E5E0D5 !important;
+            border-radius: 8px !important;
+            background-color: #FFFFFF !important;
+        }}
+
+        /* ---- alert boxes (info / success / warning) ---- */
+        [data-testid="stAlert"] {{
+            border-radius: 8px !important;
+        }}
+
+        /* ---- sidebar ---- */
+        [data-testid="stSidebar"] {{
+            background-color: {NAVY} !important;
+        }}
+        [data-testid="stSidebar"] *, [data-testid="stSidebar"] label,
+        [data-testid="stSidebar"] p, [data-testid="stSidebar"] span {{
+            color: {CREAM} !important;
+        }}
+
+        /* ---- divider spacing ---- */
+        hr {{ margin: 1.2rem 0 !important; border-color: #E5E0D5 !important; }}
+
+        /* ---- brand header text - ID selectors beat the global rule ---- */
+        #pc-brand-name {{ color: {CREAM} !important; }}
+        #pc-brand-tag  {{ color: {SAFFRON} !important; }}
+
+        /* ---- dataframe ---- */
+        [data-testid="stDataFrame"] {{
+            border: 1px solid #E5E0D5 !important;
+            border-radius: 8px !important;
+        }}
         </style>
     """, unsafe_allow_html=True)
 
 
 def brand_header():
+    """The navy brand block at the top of every page."""
     st.markdown(f"""
-        <div class="brand-bar">
-          <div class="name">PARTHSARTHI CAPITAL</div>
-          <div class="tag">Your charioteer in Indian markets</div>
+        <div style="background:{NAVY}; padding:22px 24px;
+                    border-radius:12px; margin-bottom:22px;">
+          <div id="pc-brand-name" style="font-size:23px;
+                      font-weight:800; letter-spacing:0.5px;">
+            PARTHSARTHI CAPITAL</div>
+          <div id="pc-brand-tag" style="font-size:13px;
+                      margin-top:3px; font-style:italic;">
+            Your charioteer in Indian markets</div>
+        </div>
+    """, unsafe_allow_html=True)
+
+
+def section_card(title, subtitle=None):
+    """Render a consistent section heading."""
+    sub = (f'<div style="font-size:12px; color:#6B7280; margin-top:2px;">'
+           f'{subtitle}</div>') if subtitle else ''
+    st.markdown(f"""
+        <div style="margin:6px 0 10px 0;">
+          <div style="font-size:15px; font-weight:700; color:{NAVY};">
+            {title}</div>
+          {sub}
         </div>
     """, unsafe_allow_html=True)
 
 
 def init_state():
-    """Initialise the session state containers used across tabs."""
+    """Initialise the session-state containers used across tabs."""
     defaults = {
-        'screener_b': None,      # uploaded momentum CSV (raw bytes)
-        'screener_c': None,      # uploaded C2 value CSV
-        'screener_d': None,      # uploaded D1 compounder CSV
-        'engine_a_score': 55,    # current Engine A regime score
-        'total_portfolio': 1000000,
-        'last_run': None,        # timestamp of the last cycle run
-        'decisions': [],         # decisions from the last cycle
+        'screener_b': None, 'screener_c': None, 'screener_d': None,
+        'engine_a_score': 55, 'total_portfolio': 1000000,
+        'last_run': None, 'decisions': [], 'engine_results': None,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
@@ -97,90 +198,83 @@ def init_state():
 
 
 def admin_panel():
-    """The admin tab - CSV upload and run controls."""
-    st.header('Admin - Data & Controls')
+    """The Admin tab - regime input and CSV upload."""
+    st.header('Admin')
+    st.caption('Set the regime, upload the daily screeners, then go to '
+               'the Decisions tab to run the engines.')
+    st.divider()
 
-    # ---- Engine A regime input ----
-    st.subheader('1. Engine A - Regime')
+    # ---- 1. Engine A regime ----
+    section_card('1.  Engine A Regime',
+                 'The macro score sets the equity budget and the gate.')
     col1, col2 = st.columns(2)
     with col1:
-        score = st.number_input(
-            'Engine A score (0-100)', min_value=0, max_value=100,
-            value=st.session_state['engine_a_score'], step=1,
-            help='The macro regime score from Engine A. Sets the equity '
-                 'budget and the operating gate.')
+        score = st.number_input('Engine A score (0-100)',
+                                 min_value=0, max_value=100,
+                                 value=st.session_state['engine_a_score'],
+                                 step=1)
         st.session_state['engine_a_score'] = score
     with col2:
-        portfolio = st.number_input(
-            'Total portfolio value (Rs)', min_value=0,
-            value=st.session_state['total_portfolio'], step=10000)
+        portfolio = st.number_input('Total portfolio (Rs)',
+                                    min_value=0,
+                                    value=st.session_state['total_portfolio'],
+                                    step=10000)
         st.session_state['total_portfolio'] = portfolio
 
-    # show the regime that score implies
     gate = ('EXIT-ALL' if score <= 20 else
             'FREEZE' if score <= 30 else 'NORMAL')
-    st.info(f'Operating gate at score {score}: **{gate}**')
+    if gate == 'NORMAL':
+        st.success(f'Operating gate: {gate} - entries and exits permitted.')
+    elif gate == 'FREEZE':
+        st.warning(f'Operating gate: {gate} - no new entries.')
+    else:
+        st.error(f'Operating gate: {gate} - close all equity positions.')
 
     st.divider()
 
-    # ---- screener uploads (single box, matched by filename) ----
-    st.subheader('2. Upload Screener CSVs')
-    st.caption('Upload all three Trendlyne exports at once. They are '
-               'matched to the right engine by filename - keep the '
-               'Mom / C2 / D1 prefixes in the file names.')
+    # ---- 2. Screener upload ----
+    section_card('2.  Upload Screener CSVs',
+                 'Upload all three at once. Files are matched to engines '
+                 'by name - keep the Mom / C2 / D1 prefixes.')
 
     files = st.file_uploader('Screener CSVs', type='csv',
                              accept_multiple_files=True,
                              key='upload_all', label_visibility='collapsed')
 
     if files:
-        # match each uploaded file to an engine by its filename
+        labels = {'B': 'Engine B - Momentum', 'C': 'Engine C - Value',
+                  'D': 'Engine D - Compounders'}
         for f in files:
-            engine = match_engine(f.name)
-            if engine == 'B':
+            eng = match_engine(f.name)
+            if eng == 'B':
                 st.session_state['screener_b'] = f
-            elif engine == 'C':
+            elif eng == 'C':
                 st.session_state['screener_c'] = f
-            elif engine == 'D':
+            elif eng == 'D':
                 st.session_state['screener_d'] = f
-
-        # show the matches so the user can confirm before running
-        st.markdown('**Filename matches:**')
+        st.write('')
         for f in files:
-            engine = match_engine(f.name)
-            if engine:
-                label = {'B': 'Engine B - Momentum',
-                         'C': 'Engine C - Value',
-                         'D': 'Engine D - Compounders'}[engine]
-                st.success(f'{f.name}  ->  {label}')
+            eng = match_engine(f.name)
+            if eng:
+                st.success(f'{f.name}  ->  {labels[eng]}')
             else:
-                st.error(f'{f.name}  ->  NOT MATCHED. Rename it to start '
-                         f'with Mom, C2 or D1, then re-upload.')
+                st.error(f'{f.name}  ->  not matched. Rename to start '
+                         f'with Mom, C2 or D1.')
 
     st.divider()
 
-    # ---- run controls ----
-    st.subheader('3. Run the Daily Cycle')
+    # ---- 3. Status ----
+    section_card('3.  Status')
     uploaded = sum(1 for k in ['screener_b', 'screener_c', 'screener_d']
                    if st.session_state[k] is not None)
-    st.caption(f'{uploaded}/3 screeners uploaded.')
-
-    if st.button('Run Daily Cycle', type='primary',
-                 disabled=(uploaded == 0)):
-        st.session_state['last_run'] = datetime.now()
-        st.success('Cycle run recorded. (Engine wiring is completed in '
-                   'items 6.2-6.5 - this 6.1 shell handles upload and '
-                   'controls.)')
-
-    if st.session_state['last_run']:
-        st.caption(f"Last cycle run: "
-                   f"{st.session_state['last_run']:%Y-%m-%d %H:%M}")
-
-
-def placeholder_tab(name, item):
-    """A placeholder for tabs built later in Phase 6."""
-    st.header(name)
-    st.info(f'This tab is built in Phase 6 item {item}.')
+    st.write(f'**{uploaded} of 3** screeners loaded.')
+    if uploaded == 3:
+        st.info('All screeners loaded. Open the **Decisions** tab and '
+                'tap "Run Engines" to generate decisions.')
+    elif uploaded > 0:
+        st.info(f'{3 - uploaded} screener(s) still needed.')
+    else:
+        st.info('Upload the three screener CSVs above to begin.')
 
 
 def main():
@@ -188,10 +282,9 @@ def main():
     init_state()
     brand_header()
 
-    tab = st.sidebar.radio(
-        'Navigate',
-        ['Admin', 'Decisions', 'Portfolio', 'Journal', 'Public'],
-    )
+    tab = st.sidebar.radio('Navigate',
+                           ['Admin', 'Decisions', 'Portfolio',
+                            'Journal', 'Public'])
     st.sidebar.divider()
     st.sidebar.caption('Parthsarthi Capital')
     st.sidebar.caption('Educational research framework.')
