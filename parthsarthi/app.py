@@ -30,6 +30,25 @@ CREAM   = '#FDFBF5'
 SAFFRON = '#D97706'
 
 
+def match_engine(filename):
+    """
+    Match an uploaded screener CSV to its engine by filename.
+    Trendlyne exports keep distinctive prefixes:
+      Mom...   -> Engine B (Momentum)
+      C2...    -> Engine C (Value)
+      D1...    -> Engine D (Compounders)
+    Returns 'B', 'C', 'D', or None if no prefix matches.
+    """
+    name = filename.lower()
+    if name.startswith('mom') or 'momentum' in name:
+        return 'B'
+    if name.startswith('c2') or 'c2_value' in name:
+        return 'C'
+    if name.startswith('d1') or 'd1_compound' in name:
+        return 'D'
+    return None
+
+
 def setup_page():
     """Page config and brand styling."""
     st.set_page_config(
@@ -104,34 +123,39 @@ def admin_panel():
 
     st.divider()
 
-    # ---- screener uploads ----
+    # ---- screener uploads (single box, matched by filename) ----
     st.subheader('2. Upload Screener CSVs')
-    st.caption('Upload the daily Trendlyne exports for each engine. '
-               'Each is validated by the data guard before any decision '
-               'is made.')
+    st.caption('Upload all three Trendlyne exports at once. They are '
+               'matched to the right engine by filename - keep the '
+               'Mom / C2 / D1 prefixes in the file names.')
 
-    c1, c2, c3 = st.columns(3)
-    with c1:
-        st.markdown('**Engine B - Momentum**')
-        f = st.file_uploader('Momentum screener', type='csv',
-                             key='upload_b', label_visibility='collapsed')
-        if f is not None:
-            st.session_state['screener_b'] = f
-            st.success(f'Loaded: {f.name}')
-    with c2:
-        st.markdown('**Engine C - Value**')
-        f = st.file_uploader('C2 value screener', type='csv',
-                             key='upload_c', label_visibility='collapsed')
-        if f is not None:
-            st.session_state['screener_c'] = f
-            st.success(f'Loaded: {f.name}')
-    with c3:
-        st.markdown('**Engine D - Compounders**')
-        f = st.file_uploader('D1 compounder screener', type='csv',
-                             key='upload_d', label_visibility='collapsed')
-        if f is not None:
-            st.session_state['screener_d'] = f
-            st.success(f'Loaded: {f.name}')
+    files = st.file_uploader('Screener CSVs', type='csv',
+                             accept_multiple_files=True,
+                             key='upload_all', label_visibility='collapsed')
+
+    if files:
+        # match each uploaded file to an engine by its filename
+        for f in files:
+            engine = match_engine(f.name)
+            if engine == 'B':
+                st.session_state['screener_b'] = f
+            elif engine == 'C':
+                st.session_state['screener_c'] = f
+            elif engine == 'D':
+                st.session_state['screener_d'] = f
+
+        # show the matches so the user can confirm before running
+        st.markdown('**Filename matches:**')
+        for f in files:
+            engine = match_engine(f.name)
+            if engine:
+                label = {'B': 'Engine B - Momentum',
+                         'C': 'Engine C - Value',
+                         'D': 'Engine D - Compounders'}[engine]
+                st.success(f'{f.name}  ->  {label}')
+            else:
+                st.error(f'{f.name}  ->  NOT MATCHED. Rename it to start '
+                         f'with Mom, C2 or D1, then re-upload.')
 
     st.divider()
 
@@ -185,7 +209,8 @@ def main():
         import view_journal
         view_journal.render()
     elif tab == 'Public':
-        placeholder_tab('Public Dashboard', '6.6')
+        import view_public
+        view_public.render()
 
 
 if __name__ == '__main__':
