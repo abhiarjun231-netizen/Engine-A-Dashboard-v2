@@ -31,7 +31,7 @@ import io
 import os
 from datetime import datetime
 
-from github_io import commit_file_to_repo
+from github_io import commit_file_to_repo, read_file_from_repo
 
 
 # ---- repo / file configuration ----
@@ -143,28 +143,58 @@ COMPONENT_GROUPS = [
 _FIELD_BY_KEY = {f['key']: f for f in MANUAL_FIELDS}
 
 
-def _load_current_values():
+def _get_manual_csv_text():
     """
-    Read manual_inputs.csv (long format: timestamp_ist, field, value, note)
-    and return {field_key: (value_str, timestamp_str)} - latest per field.
+    Return the text of manual_inputs.csv.
+
+    Reads from the GitHub repo — the SAME place this form commits to —
+    so a value saved in an earlier session shows back correctly after a
+    browser refresh. The Contents API is not CDN-cached, so a commit is
+    reflected immediately.
+
+    Falls back to the app's LOCAL copy only if the repo read fails (no
+    token, network error, etc.). That local copy is frozen at the last
+    deploy and can be stale — the repo is the source of truth. Before
+    this fix the form always read the local copy, which is why saved
+    values appeared to vanish on refresh.
     """
-    path = None
+    token = _get_secret('GH_PAT')
+    if token:
+        text, err = read_file_from_repo(
+            MANUAL_CSV_RELATIVE, token,
+            GITHUB_OWNER, GITHUB_REPO, GITHUB_BRANCH)
+        if text is not None:
+            return text          # live repo file
+        if err is None:
+            return ''            # file does not exist in the repo yet
+        # a real error — fall through to the local copy below
+
     for p in _CSV_PATHS:
         if os.path.exists(p):
-            path = p
-            break
-    if path is None:
-        return {}
+            try:
+                with open(p, 'r', encoding='utf-8') as f:
+                    return f.read()
+            except OSError:
+                return ''
+    return ''
+
+
+def _load_current_values():
+    """
+    Parse manual_inputs.csv (long format: timestamp_ist, field, value,
+    note) and return {field_key: (value_str, timestamp_str)} - the
+    latest entry per field.
+    """
+    text = _get_manual_csv_text()
     latest = {}
     try:
-        with open(path, 'r', encoding='utf-8') as f:
-            for row in csv.DictReader(f):
-                fld = row.get('field')
-                if fld:
-                    # later rows overwrite earlier - CSV is append-order
-                    latest[fld] = (row.get('value', ''),
-                                   row.get('timestamp_ist', ''))
-    except (OSError, csv.Error):
+        for row in csv.DictReader(io.StringIO(text)):
+            fld = row.get('field')
+            if fld:
+                # later rows overwrite earlier - CSV is append-order
+                latest[fld] = (row.get('value', ''),
+                               row.get('timestamp_ist', ''))
+    except csv.Error:
         return {}
     return latest
 
@@ -184,15 +214,18 @@ def _build_csv(existing_rows, changed_pairs):
 
 
 def _read_existing_rows():
-    """Read the full existing manual_inputs.csv as a list of row dicts."""
-    for p in _CSV_PATHS:
-        if os.path.exists(p):
-            try:
-                with open(p, 'r', encoding='utf-8') as f:
-                    return list(csv.DictReader(f))
-            except (OSError, csv.Error):
-                return []
-    return []
+    """
+    Return the full manual_inputs.csv as a list of row dicts.
+
+    Reads from the repo (same source as _load_current_values), so a
+    save appends to the LIVE file — never to a stale local copy that
+    would silently drop history written by an earlier session.
+    """
+    text = _get_manual_csv_text()
+    try:
+        return list(csv.DictReader(io.StringIO(text)))
+    except csv.Error:
+        return []
 
 
 def _changed(new_val, old_val):
@@ -236,6 +269,12 @@ def render():
             else:
                 st.error('Wrong password.')
         return
+
+    # confirmation from a save that just happened — survives the rerun
+    # that reloads the form with the newly-saved values
+    saved_msg = st.session_state.pop('ea_save_msg', None)
+    if saved_msg:
+        st.success(saved_msg)
 
     current = _load_current_values()
 
@@ -306,8 +345,13 @@ def render():
                 token=token, owner=GITHUB_OWNER, repo=GITHUB_REPO,
                 branch=GITHUB_BRANCH)
         if ok:
-            st.success(f'Saved. {len(changed_pairs)} field(s) committed. '
-                       'Engine A will recompute on its next scheduled run.')
+            # Stash the confirmation, then rerun so the form reloads from
+            # the repo and immediately shows the just-saved values (and
+            # their fresh "last updated" timestamps).
+            st.session_state['ea_save_msg'] = (
+                f'Saved - {len(changed_pairs)} field(s) committed to the '
+                'repo. Engine A will recompute on its next scheduled run.')
+            st.rerun()
         else:
             st.error(f'Commit failed: {err}')
 

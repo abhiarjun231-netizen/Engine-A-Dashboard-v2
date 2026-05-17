@@ -116,3 +116,52 @@ def commit_file_to_repo(content, repo_path, commit_msg, token, owner, repo, bran
     if r.status_code == 422:
         return False, f"422 Validation error: {r.text[:300]}"
     return False, f"PUT {r.status_code}: {r.text[:300]}"
+
+
+def read_file_from_repo(repo_path, token, owner, repo, branch="main"):
+    """
+    Read a file's text content FROM the repo via the Contents API.
+
+    Why this exists: the Streamlit app's own local copy of a repo file
+    is frozen at deploy time and never updates. A form that commits to
+    the repo but reads its local copy will not see its own saved data.
+    Reading here — from the repo — gives true read-after-write.
+
+    The Contents API is NOT CDN-cached (unlike raw.githubusercontent.com),
+    so a commit is reflected immediately.
+
+    Returns (text, error):
+      - (text, None)  on success
+      - (None, None)  if the file does not exist yet (not an error)
+      - (None, error) on any real failure
+    Files larger than ~1 MB are not returned inline by this API; the
+    files this is used for (manual_inputs.csv) are far smaller.
+    """
+    if not token:
+        return None, "No GH_PAT provided (Streamlit secret missing)"
+
+    url = f"{GITHUB_API}/repos/{owner}/{repo}/contents/{repo_path}"
+    try:
+        r = requests.get(
+            url, headers=_headers(token),
+            params={"ref": branch}, timeout=HTTP_TIMEOUT,
+        )
+    except requests.RequestException as e:
+        return None, f"Network error on GET: {e}"
+
+    if r.status_code == 200:
+        try:
+            payload = r.json()
+            # GitHub returns base64; the b64 string may contain newlines,
+            # which base64.b64decode tolerates by default.
+            raw = base64.b64decode(payload.get("content", ""))
+            return raw.decode("utf-8"), None
+        except (ValueError, KeyError, UnicodeDecodeError) as e:
+            return None, f"Could not decode file content: {e}"
+    if r.status_code == 404:
+        return None, None     # file doesn't exist yet — not an error
+    if r.status_code == 401:
+        return None, "401 Unauthorized — PAT is invalid or expired"
+    if r.status_code == 403:
+        return None, "403 Forbidden — PAT lacks access to this repo"
+    return None, f"GET {r.status_code}: {r.text[:200]}"

@@ -12,6 +12,8 @@ Deploy:        Streamlit Community Cloud, main file parthsarthi/app.py
 """
 
 import streamlit as st
+import os
+import tempfile
 from datetime import datetime
 
 # ---- Parthsarthi brand palette ----
@@ -39,6 +41,86 @@ def match_engine(filename):
     if name.startswith('d1') or 'd1_compound' in name or 'd1 compound' in name:
         return 'D'
     return None
+
+
+# ---------------------------------------------------------------
+#  SCREENER PERSISTENCE - survive a browser refresh
+# ---------------------------------------------------------------
+# st.session_state is wiped on every browser refresh, so an uploaded
+# screener would be lost and need re-uploading. We mirror each uploaded
+# CSV to a cache folder on disk; on load we restore from it. The cache
+# stays until the user uploads a replacement or taps "Clear screeners".
+#
+# Scope of this fix: it survives a browser refresh and short idle -
+# exactly the reported problem. It does NOT survive the Streamlit app
+# fully sleeping (Streamlit Cloud wipes local disk after long
+# inactivity); permanent storage would need a repo-backed cache.
+
+_CACHE_DIR = os.path.join(tempfile.gettempdir(), 'parthsarthi_screener_cache')
+_ENGINES = ['B', 'C', 'D']
+
+
+class _CachedScreener:
+    """
+    A screener restored from the disk cache. It behaves like a Streamlit
+    UploadedFile for the only two things the rest of the app needs:
+    .name and .getvalue(). match_engine() and the engine orchestrators
+    therefore work with it unchanged - no other file needs editing.
+    """
+
+    def __init__(self, name, data):
+        self.name = name
+        self._data = data
+
+    def getvalue(self):
+        return self._data
+
+
+def _cache_paths(engine):
+    """(csv_path, name_path) for one engine's cached screener."""
+    return (os.path.join(_CACHE_DIR, f'screener_{engine}.csv'),
+            os.path.join(_CACHE_DIR, f'screener_{engine}.name'))
+
+
+def cache_screener(engine, uploaded_file):
+    """Mirror an uploaded screener to disk so it survives a refresh."""
+    try:
+        os.makedirs(_CACHE_DIR, exist_ok=True)
+        csv_path, name_path = _cache_paths(engine)
+        with open(csv_path, 'wb') as f:
+            f.write(uploaded_file.getvalue())
+        with open(name_path, 'w', encoding='utf-8') as f:
+            f.write(getattr(uploaded_file, 'name', f'screener_{engine}.csv'))
+    except OSError:
+        pass   # caching is best-effort - never break an upload over it
+
+
+def load_cached_screener(engine):
+    """Return a _CachedScreener restored from disk, or None if none cached."""
+    csv_path, name_path = _cache_paths(engine)
+    if not os.path.exists(csv_path):
+        return None
+    try:
+        with open(csv_path, 'rb') as f:
+            data = f.read()
+        name = f'screener_{engine}.csv'
+        if os.path.exists(name_path):
+            with open(name_path, 'r', encoding='utf-8') as nf:
+                name = nf.read().strip() or name
+        return _CachedScreener(name, data)
+    except OSError:
+        return None
+
+
+def clear_cached_screeners():
+    """Delete every cached screener - the 'upload fresh ones' action."""
+    for engine in _ENGINES:
+        for path in _cache_paths(engine):
+            try:
+                if os.path.exists(path):
+                    os.remove(path)
+            except OSError:
+                pass
 
 
 def setup_page():
@@ -82,23 +164,40 @@ def setup_page():
         .stApp h3 {{ font-size: 1.05rem !important; }}
 
         /* ---- all buttons - navy, no red ---- */
-        .stButton > button {{
+        /* The global dark-text rule above ALSO matches the <p>/<div>/<span>
+           that Streamlit wraps the button LABEL in, making the label
+           dark-on-dark (invisible). These rules use higher specificity
+           (.stApp .stButton button *) to force the label - and every
+           child element - to the right colour. */
+        .stApp .stButton button {{
             background-color: {NAVY} !important;
-            color: {CREAM} !important;
             border: none !important;
             border-radius: 8px !important;
             font-weight: 600 !important;
             padding: 0.55rem 1.4rem !important;
             width: 100% !important;
         }}
-        .stButton > button:hover {{
+        .stApp .stButton button,
+        .stApp .stButton button * {{
+            color: {CREAM} !important;
+        }}
+        .stApp .stButton button:hover {{
             background-color: {SAFFRON} !important;
+        }}
+        .stApp .stButton button:hover,
+        .stApp .stButton button:hover * {{
             color: {NAVY} !important;
         }}
-        .stButton > button:active, .stButton > button:focus {{
+        .stApp .stButton button:active,
+        .stApp .stButton button:focus {{
             background-color: {SAFFRON} !important;
-            color: {NAVY} !important;
             box-shadow: none !important;
+        }}
+        .stApp .stButton button:active,
+        .stApp .stButton button:active *,
+        .stApp .stButton button:focus,
+        .stApp .stButton button:focus * {{
+            color: {NAVY} !important;
         }}
 
         /* ---- inputs ---- */
@@ -118,6 +217,16 @@ def setup_page():
         }}
         [data-testid="stFileUploader"] section {{
             background-color: #FFFFFF !important;
+        }}
+        /* the uploader's own "Browse files" button is not a .stButton,
+           so the rules above miss it - give it a clear light style */
+        .stApp [data-testid="stFileUploader"] button {{
+            background-color: #FFFFFF !important;
+            border: 1px solid #C9C2B0 !important;
+        }}
+        .stApp [data-testid="stFileUploader"] button,
+        .stApp [data-testid="stFileUploader"] button * {{
+            color: {NAVY} !important;
         }}
 
         /* ---- expanders ---- */
@@ -191,10 +300,22 @@ def init_state():
         'screener_b': None, 'screener_c': None, 'screener_d': None,
         'engine_a_score': 55, 'total_portfolio': 1000000,
         'last_run': None, 'decisions': [], 'engine_results': None,
+        'uploader_gen': 0,
     }
     for k, v in defaults.items():
         if k not in st.session_state:
             st.session_state[k] = v
+
+    # Restore screeners cached on disk. A browser refresh wipes
+    # st.session_state, so without this the three CSVs would be lost
+    # and need re-uploading every time. The cache is rebuilt on upload
+    # and cleared by the "Clear all screeners" button.
+    for engine in _ENGINES:
+        key = f'screener_{engine.lower()}'
+        if st.session_state.get(key) is None:
+            cached = load_cached_screener(engine)
+            if cached is not None:
+                st.session_state[key] = cached
 
 
 def admin_panel():
@@ -251,23 +372,24 @@ def admin_panel():
     # ---- 3. Screener upload ----
     section_card('3.  Upload Screener CSVs',
                  'Upload all three at once. Files are matched to engines '
-                 'by name - keep the Mom / C2 / D1 prefixes.')
+                 'by name - keep the Mom / C2 / D1 prefixes. Uploads are '
+                 'kept across a browser refresh until you clear them.')
 
+    # The uploader key carries a generation counter so the "Clear all
+    # screeners" button can force a fresh, empty uploader widget.
+    up_key = f'upload_all_{st.session_state.get("uploader_gen", 0)}'
     files = st.file_uploader('Screener CSVs', type='csv',
                              accept_multiple_files=True,
-                             key='upload_all', label_visibility='collapsed')
+                             key=up_key, label_visibility='collapsed')
 
     if files:
         labels = {'B': 'Engine B - Momentum', 'C': 'Engine C - Value',
                   'D': 'Engine D - Compounders'}
         for f in files:
             eng = match_engine(f.name)
-            if eng == 'B':
-                st.session_state['screener_b'] = f
-            elif eng == 'C':
-                st.session_state['screener_c'] = f
-            elif eng == 'D':
-                st.session_state['screener_d'] = f
+            if eng in _ENGINES:
+                st.session_state[f'screener_{eng.lower()}'] = f
+                cache_screener(eng, f)        # mirror to disk - survives refresh
         st.write('')
         for f in files:
             eng = match_engine(f.name)
@@ -281,16 +403,34 @@ def admin_panel():
 
     # ---- 4. Status ----
     section_card('4.  Status')
-    uploaded = sum(1 for k in ['screener_b', 'screener_c', 'screener_d']
-                   if st.session_state[k] is not None)
-    st.write(f'**{uploaded} of 3** screeners loaded.')
-    if uploaded == 3:
+    loaded = []
+    for eng in _ENGINES:
+        sc = st.session_state.get(f'screener_{eng.lower()}')
+        if sc is not None:
+            loaded.append((eng, getattr(sc, 'name', f'screener_{eng}.csv')))
+
+    st.write(f'**{len(loaded)} of 3** screeners loaded.')
+    for eng, name in loaded:
+        st.caption(f'Engine {eng}:  {name}')
+
+    if len(loaded) == 3:
         st.info('All screeners loaded. Open the **Decisions** tab and '
                 'tap "Run Engines" to generate decisions.')
-    elif uploaded > 0:
-        st.info(f'{3 - uploaded} screener(s) still needed.')
+    elif loaded:
+        st.info(f'{3 - len(loaded)} screener(s) still needed.')
     else:
         st.info('Upload the three screener CSVs above to begin.')
+
+    if loaded:
+        st.write('')
+        if st.button('Clear all screeners'):
+            clear_cached_screeners()
+            for eng in _ENGINES:
+                st.session_state[f'screener_{eng.lower()}'] = None
+            # bump the uploader generation so its widget resets to empty
+            st.session_state['uploader_gen'] = \
+                st.session_state.get('uploader_gen', 0) + 1
+            st.rerun()
 
 
 def engine_a_panel():
