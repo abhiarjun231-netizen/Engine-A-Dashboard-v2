@@ -1,16 +1,28 @@
-# Streamlit theme config
-# Forces light theme so custom inline-HTML colors render correctly.
-# Without this, Streamlit Cloud auto-matches the user's OS dark mode and
-# our hardcoded dark text becomes invisible on dark background.
+# Streamlit theme config for the Parthsarthi Capital dashboard.
+#
+# WHY THIS FILE EXISTS
+# Without a theme config, Streamlit Cloud auto-matches the viewer's
+# device theme. On a phone in dark mode it picks the DARK base theme,
+# which makes secondaryBackgroundColor dark. The app's injected brand
+# CSS only overrides the PRIMARY backgrounds, so secondary-background
+# elements - code blocks (st.code) and expander headers - stay dark,
+# giving dark-on-dark, unreadable text.
+#
+# base = "light" pins the base theme so those elements render light
+# regardless of the viewer's device, and the brand CSS sits cleanly
+# on top of a light base instead of fighting a dark one.
+#
+# This mirrors the fix already used by the Engine A app
+# (streamlit/config.toml) - the same lesson, same solution.
+#
+# LOCATION: this file must live at  .streamlit/config.toml  in the
+# REPOSITORY ROOT (not inside parthsarthi/). Streamlit Cloud reads the
+# config from the repo root, which is its working directory.
 
 [theme]
 base = "light"
-backgroundColor = "#ffffff"
-secondaryBackgroundColor = "#fafafa"
-textColor = "#171717"
-primaryColor = "#171717"
+backgroundColor = "#FDFBF5"
+secondaryBackgroundColor = "#F1ECE0"
+textColor = "#2A3340"
+primaryColor = "#D97706"
 font = "sans serif"
-
-[server]
-# Streamlit Cloud defaults are fine; explicit for clarity
-headless = true
