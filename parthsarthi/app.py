@@ -235,6 +235,31 @@ def setup_page():
             border-radius: 8px !important;
             background-color: #FFFFFF !important;
         }}
+        /* The expander HEADER is a <summary> the dark base theme paints
+           with its dark secondaryBackgroundColor - the rule above only
+           covers the container. Force the header light and readable. */
+        .stApp [data-testid="stExpander"] summary,
+        .stApp [data-testid="stExpanderHeader"],
+        .stApp [data-testid="stExpander"] details > summary {{
+            background-color: #FFFFFF !important;
+        }}
+        .stApp [data-testid="stExpander"] summary,
+        .stApp [data-testid="stExpander"] summary *,
+        .stApp [data-testid="stExpanderHeader"],
+        .stApp [data-testid="stExpanderHeader"] * {{
+            color: {NAVY} !important;
+        }}
+        /* code blocks (st.code) - same dark-theme issue; force light so
+           it holds even without a theme config present. */
+        .stApp [data-testid="stCode"],
+        .stApp [data-testid="stCode"] pre,
+        .stApp pre, .stApp code {{
+            background-color: #F1ECE0 !important;
+        }}
+        .stApp [data-testid="stCode"], .stApp [data-testid="stCode"] *,
+        .stApp pre, .stApp pre *, .stApp code {{
+            color: {NAVY} !important;
+        }}
 
         /* ---- alert boxes (info / success / warning) ---- */
         [data-testid="stAlert"] {{

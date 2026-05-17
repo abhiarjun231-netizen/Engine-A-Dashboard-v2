@@ -133,6 +133,30 @@ def _audit_box(text):
         unsafe_allow_html=True)
 
 
+def _report_box(text):
+    """
+    Render the full engine cycle report as a light, scrollable
+    monospace box.
+
+    Uses our own inline CSS instead of st.code() because st.code()
+    follows the Streamlit theme - on a device in dark mode it renders
+    dark-on-dark. This box is light regardless of the viewer's device,
+    so it does not depend on a theme config being present.
+
+    white-space:pre (not pre-wrap) preserves the report's ASCII column
+    alignment; long lines scroll horizontally inside the box.
+    """
+    safe = (str(text) if text is not None else '') \
+        .replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    st.markdown(
+        f"<div style='background:#F1ECE0; border:1px solid #E5E0D5; "
+        f"border-radius:6px; padding:12px 14px; margin:2px 0 4px 0; "
+        f"font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; "
+        f"font-size:12px; line-height:1.5; color:#2A3340; "
+        f"white-space:pre; overflow-x:auto;'>{safe}</div>",
+        unsafe_allow_html=True)
+
+
 def render():
     """Render the Decisions tab. Called by app.py."""
     st.header('Decisions')
@@ -208,7 +232,7 @@ def render():
                 _decision_card(d)
 
         with st.expander('Full engine cycle report'):
-            st.code(report, language=None)
+            _report_box(report)
 
         st.divider()
 
