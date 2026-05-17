@@ -27,6 +27,7 @@ VERDICT_COLOUR = {
     # buy-grade
     'STRIKE': '#16a34a', 'DEPLOY': '#16a34a', 'INCUBATE': '#16a34a',
     'INCUBATE-START': '#16a34a', 'ENTER-FREE-SLOT': '#16a34a',
+    'Buy': '#16a34a', 'Watch': '#6B7280', 'Skip': '#9CA3AF',
     # hold / wait
     'HOLD': '#6B7280', 'STALK': '#6B7280', 'HOLD-FIRE': '#6B7280',
     'INCUBATE-HOLD': '#6B7280', 'WAIT-NO-ROOM': '#6B7280',
@@ -160,7 +161,7 @@ def render():
         st.caption(f'{len(decisions)} decisions | {tally_txt}')
 
         # buy-grade decisions first, then the rest
-        buy_grade = {'STRIKE', 'DEPLOY', 'INCUBATE', 'INCUBATE-START'}
+        buy_grade = {'Buy', 'STRIKE', 'DEPLOY', 'INCUBATE'}
         priority = [d for d in decisions if d.verdict in buy_grade]
         others = [d for d in decisions if d.verdict not in buy_grade]
 
@@ -168,8 +169,18 @@ def render():
             st.markdown('**Action decisions:**')
             for d in priority:
                 _decision_card(d)
-                with st.expander('reason string'):
-                    st.code(d.reason_string(), language=None)
+                # show the plain-English summary if present, else the
+                # auditable reason string
+                if getattr(d, 'summary', None):
+                    st.markdown(
+                        f"<div style='font-size:13px; color:#2A3340; "
+                        f"padding:4px 12px 10px 12px;'>{d.summary}</div>",
+                        unsafe_allow_html=True)
+                    with st.expander('audit detail'):
+                        st.code(d.reason_string(), language=None)
+                else:
+                    with st.expander('reason string'):
+                        st.code(d.reason_string(), language=None)
 
         with st.expander(f'All {len(decisions)} decisions for '
                          f'{engine_titles[eng_code]}'):

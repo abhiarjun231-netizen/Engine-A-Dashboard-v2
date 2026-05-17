@@ -28,6 +28,9 @@ template narration is always sufficient and always available.
 
 # verdict -> a plain-English action phrase
 VERDICT_PHRASE = {
+    'Buy':             'is a buy candidate',
+    'Watch':           'is on watch - a real case, not yet strong enough',
+    'Skip':            'does not clear the bar this cycle',
     'STRIKE':          'is a buy candidate',
     'DEPLOY':          'is a buy candidate',
     'INCUBATE':        'qualifies to begin a 90-day incubation',
@@ -117,7 +120,7 @@ def narrate_cycle(decisions, max_items=None):
     Narrate a whole cycle's worth of decisions, action decisions first.
     Returns a list of (ticker, verdict, narration) tuples.
     """
-    buy_grade = {'STRIKE', 'DEPLOY', 'INCUBATE', 'INCUBATE-START'}
+    buy_grade = {'Buy', 'STRIKE', 'DEPLOY', 'INCUBATE'}
     exit_grade = {'EXIT', 'EXIT-TRAIL', 'EXIT-DEAD', 'INCUBATE-FAIL'}
 
     def priority(d):
@@ -148,7 +151,7 @@ def cycle_summary(decisions):
         tally[d.verdict] = tally.get(d.verdict, 0) + 1
 
     buy = sum(tally.get(v, 0) for v in
-              ['STRIKE', 'DEPLOY', 'INCUBATE', 'INCUBATE-START'])
+              ['Buy', 'STRIKE', 'DEPLOY', 'INCUBATE'])
     exits = sum(tally.get(v, 0) for v in
                 ['EXIT', 'EXIT-TRAIL', 'EXIT-DEAD', 'INCUBATE-FAIL'])
     books = tally.get('BOOK-THIRD', 0)

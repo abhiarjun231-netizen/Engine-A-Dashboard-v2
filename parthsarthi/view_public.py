@@ -116,10 +116,23 @@ def _recent_activity():
     st.markdown(f"*{cycle_summary(all_decisions)}*")
 
     # the action decisions, narrated
-    buy_grade = {'STRIKE', 'DEPLOY', 'INCUBATE', 'INCUBATE-START'}
+    buy_grade = {'Buy', 'STRIKE', 'DEPLOY', 'INCUBATE'}
     exit_grade = {'EXIT', 'EXIT-TRAIL', 'EXIT-DEAD', 'INCUBATE-FAIL'}
     action = [d for d in all_decisions
               if d.verdict in buy_grade or d.verdict in exit_grade]
+
+    # DE-DUPLICATION: a single stock can produce more than one decision
+    # in a cycle (e.g. a conviction 'Buy' and a follow-on incubation
+    # step). The public view shows ONE line per stock - the first,
+    # highest-level decision - so the same name never appears twice.
+    seen = set()
+    deduped = []
+    for d in action:
+        if d.ticker in seen:
+            continue
+        seen.add(d.ticker)
+        deduped.append(d)
+    action = deduped
 
     if not action:
         st.caption('No buy or exit actions in the latest cycle - '

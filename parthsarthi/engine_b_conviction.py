@@ -1,48 +1,45 @@
 """
 engine_b_conviction.py
-Parthsarthi Capital - Phase 2, Item 2.1
-ENGINE B - CONVICTION SCORING (6-signal momentum model).
+Parthsarthi Capital - Engine B - MOMENTUM CONVICTION (percentile-ranked).
 
-This is the first piece of Engine B itself. It takes the momentum
-screener and scores every stock on six signals (max 10 points),
-then assigns the verdict:
+WHY THIS WAS REBUILT (again)
+V1 binary - everything clustered. V2 fixed graded curves - spread,
+but fixed. THIS version scores each metric as a PERCENTILE against
+the screen, blended with a SECTOR-RELATIVE percentile. A stock is
+judged against the actual universe and its own sector's peers.
 
-  7 - 10  STRIKE     buy at next session open
-  4 - 6   STALK      stay in WATCH, re-score next upload
-  1 - 3   SKIP       stay in WATCH, low priority
+Four momentum metrics, 10 points total:
+  Trend strength      0 - 3.5   Momentum Score   (higher is better)
+  Durability          0 - 2.5   Durability Score (higher is better)
+  Range position      0 - 2.0   place in 52-week range (higher better)
+  Delivery strength   0 - 2.0   weekly delivery vs monthly (higher better)
 
-The six signals (from the Engine B framework):
-  1. Multi-Engine       +3   also in Engine C or D screener
-  2. Durability Fortress+2   Durability Score > 75
-  3. Momentum Surge     +2   Momentum Score > 70
-  4. Sector Safe        +1   sector < 30% of current B portfolio
-  5. Volume Confirm     +1   weekly delivery % above monthly average
-  6. Fresh Qualifier    +1   first appearance / 30+ day re-appearance
+Verdict bands (plain English):
+  >= 7.0   Buy      strong relative momentum, buy at next session open
+  4.5-6.9  Watch    a real case, not yet strong enough
+  < 4.5    Skip     does not clear the momentum bar
 
-Every score produces a full reason string via the reasoning engine.
-
-NOTE on the Multi-Engine signal: it needs the C and D screener lists.
-Until those are wired, it is passed in as an (optional) set of tickers;
-if not provided it scores 0 - the 10-point scale is retained so the
-locked thresholds stay valid, exactly as the framework specifies.
+Cross-engine qualification is shown as a flag. Every decision
+carries a plain-English summary from real numbers.
 """
 
 import csv
 from reasoning_engine import Decision
+from ranking_engine import blended_rank
 
 
-# ---- thresholds (locked, from the Engine B framework) ----
-DURABILITY_FORTRESS = 75
-MOMENTUM_SURGE      = 70
-SECTOR_CAP_PCT      = 30.0
-STRIKE_MIN          = 7
-STALK_MIN           = 4
+BUY_MIN   = 7.0
+WATCH_MIN = 4.5
+
+MAX_TREND    = 3.5
+MAX_DURABLE  = 2.5
+MAX_RANGE    = 2.0
+MAX_DELIVERY = 2.0
 
 
 def _num(v):
-    """Best-effort numeric parse."""
     try:
-        return float(str(v).replace(',', '').strip())
+        return float(str(v).replace(',', '').replace('%', '').strip())
     except (ValueError, AttributeError, TypeError):
         return None
 
@@ -61,182 +58,235 @@ def load_screener(csv_path):
 
 
 def sector_exposure(held_positions):
-    """
-    Given current Engine B holdings [{ticker, sector}], return
-    {sector: pct_of_portfolio}. Used by the Sector Safe signal.
-    """
-    if not held_positions:
-        return {}
-    n = len(held_positions)
-    counts = {}
-    for p in held_positions:
-        s = p.get('sector', 'Unknown')
-        counts[s] = counts.get(s, 0) + 1
-    return {s: c / n * 100.0 for s, c in counts.items()}
+    """Kept for orchestrator compatibility - returns empty dict."""
+    return {}
 
 
-def score_stock(ticker, row, cd_tickers=None, sector_pct=None,
-                fresh_tickers=None):
-    """
-    Score one stock on the 6-signal model. Returns a Decision object
-    (from reasoning_engine) carrying the verdict and full reason string.
+def _range_position(ltp, low, high):
+    """Place in the 52-week range, 0-100. None if data missing."""
+    if None in (ltp, low, high) or high <= low:
+        return None
+    return max(0.0, min(100.0, (ltp - low) / (high - low) * 100.0))
 
-    cd_tickers    - set of tickers also in Engine C or D screeners
-    sector_pct    - {sector: pct} of current B portfolio
-    fresh_tickers - set of tickers that are fresh qualifiers
-    """
-    cd_tickers = cd_tickers or set()
-    sector_pct = sector_pct or {}
-    fresh_tickers = fresh_tickers or set()
 
-    dur = _num(row.get('Durability Score'))
-    mom = _num(row.get('Momentum Score'))
-    sector = row.get('Sector', 'Unknown')
-    wk_deliv = _num(row.get('Delivery% Vol  Avg Week'))
-    mo_deliv = _num(row.get('Delivery% Vol  Avg Month'))
+def _delivery_ratio(week, month):
+    """Weekly delivery % over monthly average. None if data missing."""
+    if week is None or month is None or month <= 0:
+        return None
+    return week / month
 
-    # ---- Signal 1: Multi-Engine (+3) ----
-    if ticker in cd_tickers:
-        s1 = (3, 'also qualifies in Engine C or D')
+
+def _pts(rank, budget):
+    if rank is None:
+        return 0.0
+    return round(rank / 100.0 * budget, 2)
+
+
+# ---- descriptors keyed off the percentile rank ----
+
+def _trend_desc(mom, rank):
+    if mom is None:
+        return 'momentum score not available'
+    if rank >= 80:
+        return f'among the strongest trends on the screen, a score of {mom:.0f}'
+    if rank >= 55:
+        return f'stronger momentum than most peers, a score of {mom:.0f}'
+    if rank >= 30:
+        return f'mid-pack momentum, a score of {mom:.0f}'
+    return f'weaker momentum than peers, a score of {mom:.0f}'
+
+
+def _durable_desc(dur, rank):
+    if dur is None:
+        return 'durability score not available'
+    if rank >= 75:
+        return f'a top-tier financial base, a Durability score of {dur:.0f}'
+    if rank >= 45:
+        return f'a sound financial base, a Durability score of {dur:.0f}'
+    return f'a weaker financial base than peers, a Durability score of {dur:.0f}'
+
+
+def _range_desc(pos, rank):
+    if pos is None:
+        return '52-week range not available'
+    if rank >= 75:
+        return f'pushing its 52-week high ({pos:.0f}% of range)'
+    if rank >= 45:
+        return f'in the upper part of its 52-week range ({pos:.0f}%)'
+    return f'low in its 52-week range ({pos:.0f}%)'
+
+
+def _delivery_desc(ratio, week, rank):
+    if ratio is None:
+        return 'delivery data not available'
+    wk = f'{week:.0f}%' if week is not None else 'n/a'
+    if rank >= 75:
+        return f'delivery volume building faster than peers (this week {wk})'
+    if rank >= 45:
+        return f'steady delivery volume (this week {wk})'
+    return f'softer delivery volume than peers (this week {wk})'
+
+
+def score_screener(csv_path, cross_engine=None, **_ignored):
+    """Score an entire momentum screener relative to the screen."""
+    cross_engine = cross_engine or set()
+    rows = load_screener(csv_path)
+    tickers = list(rows.keys())
+
+    mom  = {t: _num(rows[t].get('Momentum Score')) for t in tickers}
+    dur  = {t: _num(rows[t].get('Durability Score')) for t in tickers}
+    rng  = {t: _range_position(_num(rows[t].get('LTP')),
+                               _num(rows[t].get('1Y Low')),
+                               _num(rows[t].get('1Y High')))
+            for t in tickers}
+    dlv  = {t: _delivery_ratio(_num(rows[t].get('Delivery% Vol  Avg Week')),
+                               _num(rows[t].get('Delivery% Vol  Avg Month')))
+            for t in tickers}
+    wk   = {t: _num(rows[t].get('Delivery% Vol  Avg Week')) for t in tickers}
+    sect = {t: (rows[t].get('Sector') or 'Unknown') for t in tickers}
+
+    t_rank = blended_rank([(t, mom[t]) for t in tickers], sect, True)
+    d_rank = blended_rank([(t, dur[t]) for t in tickers], sect, True)
+    r_rank = blended_rank([(t, rng[t]) for t in tickers], sect, True)
+    v_rank = blended_rank([(t, dlv[t]) for t in tickers], sect, True)
+
+    decisions = []
+    for t in tickers:
+        decisions.append(_build_decision(
+            t, cross_engine,
+            mom[t], t_rank.get(t), dur[t], d_rank.get(t),
+            rng[t], r_rank.get(t), dlv[t], wk[t], v_rank.get(t)))
+    decisions.sort(key=lambda d: d.total_score(), reverse=True)
+    return decisions
+
+
+def _build_decision(ticker, cross_engine, mom, t_rank, dur, d_rank,
+                     rng, r_rank, dlv, wk, v_rank):
+    t_pts = _pts(t_rank, MAX_TREND)
+    d_pts = _pts(d_rank, MAX_DURABLE)
+    r_pts = _pts(r_rank, MAX_RANGE)
+    v_pts = _pts(v_rank, MAX_DELIVERY)
+    total = round(t_pts + d_pts + r_pts + v_pts, 1)
+
+    if total >= BUY_MIN:
+        verdict = 'Buy'
+    elif total >= WATCH_MIN:
+        verdict = 'Watch'
     else:
-        s1 = (0, 'not in C or D screener')
+        verdict = 'Skip'
 
-    # ---- Signal 2: Durability Fortress (+2) ----
-    dur_disp = f'{dur:.0f}' if dur is not None else 'n/a'
-    if dur is not None and dur > DURABILITY_FORTRESS:
-        s2 = (2, f'Durability {dur_disp} > {DURABILITY_FORTRESS}')
+    t_desc = _trend_desc(mom, t_rank or 0)
+    d_desc = _durable_desc(dur, d_rank or 0)
+    r_desc = _range_desc(rng, r_rank or 0)
+    v_desc = _delivery_desc(dlv, wk, v_rank or 0)
+
+    d = Decision('B', ticker, verdict, 'Momentum conviction (percentile-ranked)')
+    d.add_signal('Trend strength',    MAX_TREND,    t_pts, t_desc)
+    d.add_signal('Durability',        MAX_DURABLE,  d_pts, d_desc)
+    d.add_signal('Range position',    MAX_RANGE,    r_pts, r_desc)
+    d.add_signal('Delivery strength', MAX_DELIVERY, v_pts, v_desc)
+
+    if ticker in cross_engine:
+        d.add_flag('Also appears on another engine\'s screen - a stronger, '
+                   'multi-angle pick.')
+
+    if verdict == 'Buy':
+        d.set_margin('points clear of the Buy line', round(total - BUY_MIN, 1))
+    elif verdict == 'Watch':
+        d.set_margin('points short of Buy', round(BUY_MIN - total, 1))
     else:
-        s2 = (0, f'Durability {dur_disp}, needs >{DURABILITY_FORTRESS}')
+        d.set_margin('points short of Watch', round(WATCH_MIN - total, 1))
 
-    # ---- Signal 3: Momentum Surge (+2) ----
-    mom_disp = f'{mom:.0f}' if mom is not None else 'n/a'
-    if mom is not None and mom > MOMENTUM_SURGE:
-        s3 = (2, f'Momentum {mom_disp} > {MOMENTUM_SURGE}')
-    else:
-        s3 = (0, f'Momentum {mom_disp}, needs >{MOMENTUM_SURGE}')
-
-    # ---- Signal 4: Sector Safe (+1) ----
-    this_sector_pct = sector_pct.get(sector, 0.0)
-    if this_sector_pct < SECTOR_CAP_PCT:
-        s4 = (1, f'{sector} {this_sector_pct:.0f}% of book (<{SECTOR_CAP_PCT:.0f}%)')
-    else:
-        s4 = (0, f'{sector} {this_sector_pct:.0f}% of book (>={SECTOR_CAP_PCT:.0f}%)')
-
-    # ---- Signal 5: Volume Confirm (+1) ----
-    if (wk_deliv is not None and mo_deliv is not None
-            and wk_deliv > mo_deliv):
-        s5 = (1, f'weekly delivery {wk_deliv:.0f}% > monthly {mo_deliv:.0f}%')
-    else:
-        s5 = (0, 'weekly delivery not above monthly average')
-
-    # ---- Signal 6: Fresh Qualifier (+1) ----
-    if ticker in fresh_tickers:
-        s6 = (1, 'fresh qualifier')
-    else:
-        s6 = (0, 'not a fresh qualifier')
-
-    total = s1[0] + s2[0] + s3[0] + s4[0] + s5[0] + s6[0]
-
-    # ---- verdict ----
-    if total >= STRIKE_MIN:
-        verdict = 'STRIKE'
-    elif total >= STALK_MIN:
-        verdict = 'STALK'
-    else:
-        verdict = 'SKIP'
-
-    # ---- build the Decision / reason string ----
-    d = Decision('B', ticker, verdict, 'Module 1 - Conviction Scoring')
-    d.add_signal('Multi-Engine',        3, s1[0], s1[1])
-    d.add_signal('Durability Fortress', 2, s2[0], s2[1])
-    d.add_signal('Momentum Surge',      2, s3[0], s3[1])
-    d.add_signal('Sector Safe',         1, s4[0], s4[1])
-    d.add_signal('Volume Confirm',      1, s5[0], s5[1])
-    d.add_signal('Fresh Qualifier',     1, s6[0], s6[1])
-
-    # margin to the nearest band boundary
-    if verdict == 'STRIKE':
-        d.set_margin('points clear of STRIKE', total - STRIKE_MIN)
-    elif verdict == 'STALK':
-        d.set_margin('points to STRIKE', total - STRIKE_MIN)
-    else:
-        d.set_margin('points to STALK', total - STALK_MIN)
-
-    # counterfactual - what would flip it up
-    if verdict != 'STRIKE':
-        gaps = []
-        if s1[0] == 0:
-            gaps.append('also qualifies in C/D (+3)')
-        if s2[0] == 0 and dur is not None:
-            gaps.append(f'Durability rises above {DURABILITY_FORTRESS} (+2)')
-        if s3[0] == 0 and mom is not None:
-            gaps.append(f'Momentum rises above {MOMENTUM_SURGE} (+2)')
-        if s4[0] == 0:
-            gaps.append(f'sector drops below {SECTOR_CAP_PCT:.0f}% (+1)')
-        need = STRIKE_MIN - total
+    if verdict == 'Buy':
         d.set_counterfactual(
-            f'-> STRIKE (needs +{need}) if: ' +
-            (' OR '.join(gaps) if gaps else 'no single signal closes the gap'))
+            f'This stays a Buy unless conviction falls below {BUY_MIN:.0f}.')
     else:
-        d.set_counterfactual('already STRIKE - would drop to STALK if it '
-                              'loses signals worth more than '
-                              f'{total - STALK_MIN + 1} points')
+        gaps = sorted(
+            [('a better trend rank', MAX_TREND - t_pts),
+             ('a better durability rank', MAX_DURABLE - d_pts),
+             ('a better range-position rank', MAX_RANGE - r_pts),
+             ('a better delivery rank', MAX_DELIVERY - v_pts)],
+            key=lambda x: -x[1])
+        d.set_counterfactual(
+            f'To reach Buy this needs {round(BUY_MIN - total, 1)} more '
+            f'points - the most room is in {gaps[0][0]}.')
 
+    d.set_summary(_summary(ticker, verdict, total,
+                           t_pts, t_desc, d_pts, d_desc,
+                           r_pts, r_desc, v_pts, v_desc))
     return d
 
 
-def score_screener(csv_path, cd_tickers=None, held_positions=None,
-                    fresh_tickers=None):
-    """
-    Score an entire momentum screener CSV.
-    Returns a list of Decision objects, sorted highest conviction first.
-    """
-    rows = load_screener(csv_path)
-    sector_pct = sector_exposure(held_positions or [])
-    decisions = []
-    for tk, row in rows.items():
-        d = score_stock(tk, row, cd_tickers, sector_pct, fresh_tickers)
-        decisions.append(d)
-    decisions.sort(key=lambda d: d.total_score(), reverse=True)
-    return decisions
+def _summary(ticker, verdict, total, t_pts, t_desc, d_pts, d_desc,
+             r_pts, r_desc, v_pts, v_desc):
+    comps = sorted(
+        [('trend', t_pts, MAX_TREND, t_desc),
+         ('durability', d_pts, MAX_DURABLE, d_desc),
+         ('range position', r_pts, MAX_RANGE, r_desc),
+         ('delivery', v_pts, MAX_DELIVERY, v_desc)],
+        key=lambda x: -(x[1] / x[2] if x[2] else 0))
+    lead, weak = comps[0], comps[-1]
+    head = f'{verdict} - momentum conviction {total:.1f} of 10. '
+    body = (f'{ticker} shows {lead[3]}, the strongest part of the case '
+            f'({lead[1]:.1f} of {lead[2]:.1f}). ')
+    body += 'It also has ' + ' and '.join(m[3] for m in comps[1:3]) + '. '
+    if weak[2] and weak[1] / weak[2] < 0.45:
+        body += (f'The weakest point is {weak[0]} - {weak[3]} '
+                 f'({weak[1]:.1f} of {weak[2]:.1f}).')
+    else:
+        body += f'Even its weakest area, {weak[0]}, holds up - {weak[3]}.'
+    body += (' Scores are ranked against this screen and against sector '
+             'peers, so they reflect relative momentum, not a fixed cutoff.')
+    return head + body
+
+
+def score_stock(ticker, row, cross_engine=None, **_ignored):
+    """Lone-stock fallback - scored at mid-rank. Prefer score_screener()."""
+    cross_engine = cross_engine or set()
+    mom = _num(row.get('Momentum Score'))
+    dur = _num(row.get('Durability Score'))
+    rng = _range_position(_num(row.get('LTP')),
+                          _num(row.get('1Y Low')),
+                          _num(row.get('1Y High')))
+    dlv = _delivery_ratio(_num(row.get('Delivery% Vol  Avg Week')),
+                          _num(row.get('Delivery% Vol  Avg Month')))
+    wk  = _num(row.get('Delivery% Vol  Avg Week'))
+    return _build_decision(ticker, cross_engine,
+                           mom, 50.0, dur, 50.0, rng, 50.0, dlv, wk, 50.0)
 
 
 # ---- self-test / live run ----
 if __name__ == '__main__':
     import os
-    print('=' * 64)
-    print('ENGINE B CONVICTION SCORING - run on live screener')
-    print('=' * 64)
+    print('=' * 66)
+    print('ENGINE B - MOMENTUM CONVICTION (percentile-ranked) - live run')
+    print('=' * 66)
 
     csv_path = '/mnt/user-data/uploads/Mom_1_May_16__2026.csv'
     if not os.path.exists(csv_path):
-        # fallback location
         csv_path = 'Mom_1_May_16__2026.csv'
 
-    # No C/D lists wired yet, no prior holdings, treat all as fresh.
-    rows = load_screener(csv_path)
-    fresh = set(rows.keys())
+    decisions = score_screener(csv_path)
+    buys  = [d for d in decisions if d.verdict == 'Buy']
+    watch = [d for d in decisions if d.verdict == 'Watch']
+    skip  = [d for d in decisions if d.verdict == 'Skip']
 
-    decisions = score_screener(csv_path, cd_tickers=None,
-                               held_positions=None, fresh_tickers=fresh)
+    print(f'\nScored {len(decisions)} momentum stocks (ranked relative)')
+    print(f'  Buy: {len(buys)}   Watch: {len(watch)}   Skip: {len(skip)}')
 
-    strike = [d for d in decisions if d.verdict == 'STRIKE']
-    stalk  = [d for d in decisions if d.verdict == 'STALK']
-    skip   = [d for d in decisions if d.verdict == 'SKIP']
+    scores = [d.total_score() for d in decisions]
+    print(f'\nSCORE SPREAD: highest {max(scores):.1f} / lowest {min(scores):.1f}'
+          f' / {len(set(scores))} distinct values')
 
-    print(f'\nScored {len(decisions)} momentum stocks')
-    print(f'  STRIKE: {len(strike)}   STALK: {len(stalk)}   SKIP: {len(skip)}')
+    print('\n--- ALL STOCKS BY CONVICTION ---')
+    for d in decisions:
+        print(f'  {d.ticker:14} {d.verdict:6} {d.total_score():4.1f}/10')
 
-    print('\n--- TOP 8 BY CONVICTION ---')
-    for d in decisions[:8]:
-        print(f'  {d.ticker:14} {d.verdict:7} {d.total_score()}/10')
+    print('\n--- TOP 3 PLAIN-ENGLISH SUMMARIES ---')
+    for d in decisions[:3]:
+        print(f'\n  [{d.ticker}]')
+        print(f'  {d.summary}')
 
-    print('\n--- SAMPLE FULL REASON STRING (highest conviction) ---')
-    if decisions:
-        print(' ', decisions[0].reason_string())
-
-    print('\n' + '=' * 64)
-    print('Conviction scoring complete. Each stock has a verdict and a')
-    print('full auditable reason string. Multi-Engine signal scores 0')
-    print('until C/D screeners are wired (10-point scale retained).')
-    print('=' * 64)
+    print('\n' + '=' * 66)
+    print('Percentile + sector-relative momentum scoring complete.')
+    print('=' * 66)

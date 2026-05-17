@@ -1,46 +1,50 @@
 """
 engine_d_conviction.py
-Parthsarthi Capital - Phase 4, Item 4.1
-ENGINE D - COMPOUNDER CONVICTION SCORING (6-signal GARP model).
+Parthsarthi Capital - Engine D - COMPOUNDER CONVICTION (percentile-ranked).
 
-The first piece of Engine D. It scores every stock on the D1
-compounder screener against six GARP-specific signals (max 10):
+WHY THIS WAS REBUILT (again)
+V1 binary - everything clustered. V2 fixed graded curves - spread,
+but fixed. THIS version scores each metric as a PERCENTILE against
+the screen, blended with a SECTOR-RELATIVE percentile. A stock is
+judged against the actual universe and its own sector's peers.
 
-  1. Multi-Engine     +3   also qualifies in Engine B or C screener
-  2. Elite Growth     +2   Net Profit 3Yr Growth > 25%
-  3. Reasonable Price +2   PEG < 1.0
-  4. Sector Safe      +1   sector < 30% of current D portfolio
-  5. Quality Wall     +1   Piotroski Score >= 8
-  6. Capital Efficient+1   ROE > 25%
+Engine D looks for COMPOUNDERS - growth at a reasonable price (GARP).
+Four metrics, 10 points total:
+  Long-term growth   0 - 3.0   net-profit 3Y growth % (higher is better)
+  Price for growth   0 - 3.0   PEG TTM                (lower is better)
+  Capital efficiency 0 - 2.0   ROE %                  (higher is better)
+  Quality            0 - 2.0   Piotroski F-Score      (higher is better)
 
-Verdict bands:
-  7 - 10  INCUBATE    deploy partial capital, begin 90-day incubation
-  4 - 6   HOLD-FIRE   stay in WATCH, re-score next upload
-  1 - 3   PASS        stay in WATCH, low priority
+Verdict bands (plain English):
+  >= 7.0   Buy      a strong compounder - begin a half-size position
+  4.5-6.9  Watch    a real candidate, not yet strong enough
+  < 4.5    Skip     does not clear the compounder bar
 
-Note Engine D weights 3-YEAR growth, not just YoY - a compounder
-must show durable multi-year growth, not one good year. The DEPLOY-
-grade verdict is INCUBATE: Engine D never commits full capital at
-entry (see the incubation engine, item 4.2).
+IMPORTANT - Engine D buys slowly. A 'Buy' means BEGIN A HALF
+POSITION and review at 90 days, never a full commitment on day one.
+That distinction is carried in the summary text.
+
+Cross-engine qualification is shown as a flag. Every decision
+carries a plain-English summary from real numbers.
 """
 
 import csv
 from reasoning_engine import Decision
+from ranking_engine import blended_rank
 
 
-# ---- locked thresholds (Engine D framework) ----
-ELITE_GROWTH_3Y   = 25.0     # NP 3Yr growth above this -> Elite Growth
-REASONABLE_PEG    = 1.0      # PEG below this -> Reasonable Price
-QUALITY_PIOTROSKI = 8        # Piotroski >= this -> Quality Wall
-CAPITAL_EFF_ROE   = 25.0     # ROE above this -> Capital Efficient
-SECTOR_CAP_PCT    = 30.0
-INCUBATE_MIN      = 7
-HOLDFIRE_MIN      = 4
+BUY_MIN   = 7.0
+WATCH_MIN = 4.5
+
+MAX_GROWTH  = 3.0
+MAX_PEG     = 3.0
+MAX_ROE     = 2.0
+MAX_QUALITY = 2.0
 
 
 def _num(v):
     try:
-        return float(str(v).replace(',', '').strip())
+        return float(str(v).replace(',', '').replace('%', '').strip())
     except (ValueError, AttributeError, TypeError):
         return None
 
@@ -59,165 +63,226 @@ def load_screener(csv_path):
 
 
 def sector_exposure(held_positions):
-    """{sector: pct} of current Engine D portfolio."""
-    if not held_positions:
-        return {}
-    n = len(held_positions)
-    counts = {}
-    for p in held_positions:
-        s = p.get('sector', 'Unknown')
-        counts[s] = counts.get(s, 0) + 1
-    return {s: c / n * 100.0 for s, c in counts.items()}
+    """Kept for orchestrator compatibility - returns empty dict."""
+    return {}
 
 
-def score_stock(ticker, row, bc_tickers=None, sector_pct=None,
-                fresh_tickers=None):
-    """
-    Score one stock on the 6-signal compounder model.
-    Returns a Decision carrying the verdict and full reason string.
+def _pts(rank, budget):
+    if rank is None:
+        return 0.0
+    return round(rank / 100.0 * budget, 2)
 
-    bc_tickers - set of tickers also in Engine B or C screeners
-    """
-    bc_tickers = bc_tickers or set()
-    sector_pct = sector_pct or {}
-    fresh_tickers = fresh_tickers or set()
 
-    growth_3y = _num(row.get('Net Profit 3Y Growth %'))
-    peg = _num(row.get('PEG TTM'))
-    piotroski = _num(row.get('Piotroski Score'))
-    roe = _num(row.get('ROE Ann  %'))
-    sector = row.get('Sector', 'Unknown')
+# ---- descriptors keyed off the percentile rank ----
 
-    # ---- Signal 1: Multi-Engine (+3) ----
-    if ticker in bc_tickers:
-        s1 = (3, 'also qualifies in Engine B or C')
+def _growth_desc(g, rank):
+    if g is None:
+        return '3-year growth not available'
+    if g < 0:
+        return f'profit shrank over three years ({g:.0f}%)'
+    if rank >= 80:
+        return f'among the fastest compounders, profit up {g:.0f}% over 3 years'
+    if rank >= 50:
+        return f'a strong 3-year compounder, profit up {g:.0f}%'
+    return f'slower 3-year growth than peers, up {g:.0f}%'
+
+
+def _peg_desc(peg, rank):
+    if peg is None or peg <= 0:
+        return 'PEG not available'
+    if rank >= 80:
+        return f'growth is keenly priced versus peers, a PEG of {peg:.2f}'
+    if rank >= 50:
+        return f'growth is fairly priced, a PEG of {peg:.2f}'
+    return f'growth is dearer than peers, a PEG of {peg:.2f}'
+
+
+def _roe_desc(roe, rank):
+    if roe is None:
+        return 'return on equity not available'
+    if rank >= 75:
+        return f'top-tier capital efficiency, an ROE of {roe:.0f}%'
+    if rank >= 45:
+        return f'sound capital efficiency, an ROE of {roe:.0f}%'
+    return f'below-peer capital efficiency, an ROE of {roe:.0f}%'
+
+
+def _quality_desc(pio, rank):
+    if pio is None:
+        return 'Piotroski score not available'
+    if rank >= 75:
+        return f'top-tier quality, a Piotroski score of {pio:.0f} of 9'
+    if rank >= 45:
+        return f'sound quality, a Piotroski score of {pio:.0f} of 9'
+    return f'below-peer quality, a Piotroski score of {pio:.0f} of 9'
+
+
+def score_screener(csv_path, cross_engine=None, **_ignored):
+    """Score an entire D1 screener relative to the screen."""
+    cross_engine = cross_engine or set()
+    rows = load_screener(csv_path)
+    tickers = list(rows.keys())
+
+    grw  = {t: _num(rows[t].get('Net Profit 3Y Growth %')) for t in tickers}
+    peg  = {t: _num(rows[t].get('PEG TTM')) for t in tickers}
+    roe  = {t: _num(rows[t].get('ROE Ann  %')) for t in tickers}
+    pio  = {t: _num(rows[t].get('Piotroski Score')) for t in tickers}
+    sect = {t: (rows[t].get('Sector') or 'Unknown') for t in tickers}
+
+    # PEG: a non-positive PEG is meaningless - treat as missing
+    peg_clean = {t: (peg[t] if (peg[t] is not None and peg[t] > 0) else None)
+                 for t in tickers}
+
+    g_rank = blended_rank([(t, grw[t]) for t in tickers], sect, True)
+    p_rank = blended_rank([(t, peg_clean[t]) for t in tickers], sect,
+                          higher_is_better=False)   # low PEG is good
+    r_rank = blended_rank([(t, roe[t]) for t in tickers], sect, True)
+    q_rank = blended_rank([(t, pio[t]) for t in tickers], sect, True)
+
+    decisions = []
+    for t in tickers:
+        decisions.append(_build_decision(
+            t, cross_engine,
+            grw[t], g_rank.get(t), peg_clean[t], p_rank.get(t),
+            roe[t], r_rank.get(t), pio[t], q_rank.get(t)))
+    decisions.sort(key=lambda d: d.total_score(), reverse=True)
+    return decisions
+
+
+def _build_decision(ticker, cross_engine, grw, g_rank, peg, p_rank,
+                     roe, r_rank, pio, q_rank):
+    g_pts = _pts(g_rank, MAX_GROWTH)
+    p_pts = _pts(p_rank, MAX_PEG)
+    r_pts = _pts(r_rank, MAX_ROE)
+    q_pts = _pts(q_rank, MAX_QUALITY)
+    total = round(g_pts + p_pts + r_pts + q_pts, 1)
+
+    if total >= BUY_MIN:
+        verdict = 'Buy'
+    elif total >= WATCH_MIN:
+        verdict = 'Watch'
     else:
-        s1 = (0, 'not in B or C screener')
+        verdict = 'Skip'
 
-    # ---- Signal 2: Elite Growth (+2) ----
-    g_disp = f'{growth_3y:.0f}%' if growth_3y is not None else 'n/a'
-    if growth_3y is not None and growth_3y > ELITE_GROWTH_3Y:
-        s2 = (2, f'3Yr profit growth {g_disp} > {ELITE_GROWTH_3Y:.0f}%')
+    g_desc = _growth_desc(grw, g_rank or 0)
+    p_desc = _peg_desc(peg, p_rank or 0)
+    r_desc = _roe_desc(roe, r_rank or 0)
+    q_desc = _quality_desc(pio, q_rank or 0)
+
+    d = Decision('D', ticker, verdict,
+                 'Compounder conviction (percentile-ranked)')
+    d.add_signal('Long-term growth',   MAX_GROWTH,  g_pts, g_desc)
+    d.add_signal('Price for growth',   MAX_PEG,     p_pts, p_desc)
+    d.add_signal('Capital efficiency', MAX_ROE,     r_pts, r_desc)
+    d.add_signal('Quality',            MAX_QUALITY, q_pts, q_desc)
+
+    if ticker in cross_engine:
+        d.add_flag('Also appears on another engine\'s screen - a stronger, '
+                   'multi-angle pick.')
+
+    if verdict == 'Buy':
+        d.set_margin('points clear of the Buy line', round(total - BUY_MIN, 1))
+    elif verdict == 'Watch':
+        d.set_margin('points short of Buy', round(BUY_MIN - total, 1))
     else:
-        s2 = (0, f'3Yr profit growth {g_disp}, needs >{ELITE_GROWTH_3Y:.0f}%')
+        d.set_margin('points short of Watch', round(WATCH_MIN - total, 1))
 
-    # ---- Signal 3: Reasonable Price (+2) ----
-    peg_disp = f'{peg:.2f}' if peg is not None else 'n/a'
-    if peg is not None and 0 < peg < REASONABLE_PEG:
-        s3 = (2, f'PEG {peg_disp} < {REASONABLE_PEG}')
-    else:
-        s3 = (0, f'PEG {peg_disp}, needs 0 < PEG < {REASONABLE_PEG}')
-
-    # ---- Signal 4: Sector Safe (+1) ----
-    this_sector_pct = sector_pct.get(sector, 0.0)
-    if this_sector_pct < SECTOR_CAP_PCT:
-        s4 = (1, f'{sector} {this_sector_pct:.0f}% of book (<{SECTOR_CAP_PCT:.0f}%)')
-    else:
-        s4 = (0, f'{sector} {this_sector_pct:.0f}% of book (>={SECTOR_CAP_PCT:.0f}%)')
-
-    # ---- Signal 5: Quality Wall (+1) ----
-    pio_disp = f'{piotroski:.0f}' if piotroski is not None else 'n/a'
-    if piotroski is not None and piotroski >= QUALITY_PIOTROSKI:
-        s5 = (1, f'Piotroski {pio_disp} >= {QUALITY_PIOTROSKI}')
-    else:
-        s5 = (0, f'Piotroski {pio_disp}, needs >={QUALITY_PIOTROSKI}')
-
-    # ---- Signal 6: Capital Efficient (+1) ----
-    roe_disp = f'{roe:.0f}%' if roe is not None else 'n/a'
-    if roe is not None and roe > CAPITAL_EFF_ROE:
-        s6 = (1, f'ROE {roe_disp} > {CAPITAL_EFF_ROE:.0f}%')
-    else:
-        s6 = (0, f'ROE {roe_disp}, needs >{CAPITAL_EFF_ROE:.0f}%')
-
-    total = s1[0] + s2[0] + s3[0] + s4[0] + s5[0] + s6[0]
-
-    # ---- verdict ----
-    if total >= INCUBATE_MIN:
-        verdict = 'INCUBATE'
-    elif total >= HOLDFIRE_MIN:
-        verdict = 'HOLD-FIRE'
-    else:
-        verdict = 'PASS'
-
-    # ---- build the Decision ----
-    d = Decision('D', ticker, verdict, 'Module 1 - Compounder Conviction Scoring')
-    d.add_signal('Multi-Engine',      3, s1[0], s1[1])
-    d.add_signal('Elite Growth',      2, s2[0], s2[1])
-    d.add_signal('Reasonable Price',  2, s3[0], s3[1])
-    d.add_signal('Sector Safe',       1, s4[0], s4[1])
-    d.add_signal('Quality Wall',      1, s5[0], s5[1])
-    d.add_signal('Capital Efficient', 1, s6[0], s6[1])
-
-    if verdict == 'INCUBATE':
-        d.set_margin('points clear of INCUBATE', total - INCUBATE_MIN)
-    elif verdict == 'HOLD-FIRE':
-        d.set_margin('points to INCUBATE', total - INCUBATE_MIN)
-    else:
-        d.set_margin('points to HOLD-FIRE', total - HOLDFIRE_MIN)
-
-    if verdict != 'INCUBATE':
-        gaps = []
-        if s1[0] == 0:
-            gaps.append('also qualifies in B/C (+3)')
-        if s2[0] == 0 and growth_3y is not None:
-            gaps.append(f'3Yr growth rises above {ELITE_GROWTH_3Y:.0f}% (+2)')
-        if s3[0] == 0 and peg is not None:
-            gaps.append(f'PEG falls below {REASONABLE_PEG} (+2)')
-        if s6[0] == 0 and roe is not None:
-            gaps.append(f'ROE rises above {CAPITAL_EFF_ROE:.0f}% (+1)')
-        need = INCUBATE_MIN - total
+    if verdict == 'Buy':
         d.set_counterfactual(
-            f'-> INCUBATE (needs +{need}) if: ' +
-            (' OR '.join(gaps) if gaps else 'no single signal closes the gap'))
+            f'This stays a Buy unless conviction falls below {BUY_MIN:.0f}.')
     else:
-        d.set_counterfactual('already INCUBATE-grade - would drop to '
-                              f'HOLD-FIRE if it loses more than '
-                              f'{total - HOLDFIRE_MIN + 1} points')
+        gaps = sorted(
+            [('a better growth rank', MAX_GROWTH - g_pts),
+             ('a better PEG rank', MAX_PEG - p_pts),
+             ('a better ROE rank', MAX_ROE - r_pts),
+             ('a better quality rank', MAX_QUALITY - q_pts)],
+            key=lambda x: -x[1])
+        d.set_counterfactual(
+            f'To reach Buy this needs {round(BUY_MIN - total, 1)} more '
+            f'points - the most room is in {gaps[0][0]}.')
+
+    d.set_summary(_summary(ticker, verdict, total,
+                           g_pts, g_desc, p_pts, p_desc,
+                           r_pts, r_desc, q_pts, q_desc))
     return d
 
 
-def score_screener(csv_path, bc_tickers=None, held_positions=None,
-                    fresh_tickers=None):
-    """Score the whole D1 screener CSV. Returns Decisions, best first."""
-    rows = load_screener(csv_path)
-    sector_pct = sector_exposure(held_positions or [])
-    decisions = [score_stock(tk, row, bc_tickers, sector_pct, fresh_tickers)
-                 for tk, row in rows.items()]
-    decisions.sort(key=lambda d: d.total_score(), reverse=True)
-    return decisions
+def _summary(ticker, verdict, total, g_pts, g_desc, p_pts, p_desc,
+             r_pts, r_desc, q_pts, q_desc):
+    comps = sorted(
+        [('long-term growth', g_pts, MAX_GROWTH, g_desc),
+         ('price for growth', p_pts, MAX_PEG, p_desc),
+         ('capital efficiency', r_pts, MAX_ROE, r_desc),
+         ('quality', q_pts, MAX_QUALITY, q_desc)],
+        key=lambda x: -(x[1] / x[2] if x[2] else 0))
+    lead, weak = comps[0], comps[-1]
+
+    if verdict == 'Buy':
+        head = (f'Buy (begin a half position) - compounder conviction '
+                f'{total:.1f} of 10. ')
+    else:
+        head = f'{verdict} - compounder conviction {total:.1f} of 10. '
+
+    body = (f'{ticker} shows {lead[3]}, the strongest part of the case '
+            f'({lead[1]:.1f} of {lead[2]:.1f}). ')
+    body += 'It also has ' + ' and '.join(m[3] for m in comps[1:3]) + '. '
+    if weak[2] and weak[1] / weak[2] < 0.45:
+        body += (f'The weakest point is {weak[0]} - {weak[3]} '
+                 f'({weak[1]:.1f} of {weak[2]:.1f}).')
+    else:
+        body += f'Even its weakest area, {weak[0]}, holds up - {weak[3]}.'
+    body += (' Scores are ranked against this screen and against sector '
+             'peers, not a fixed cutoff.')
+    if verdict == 'Buy':
+        body += (' As a compounder, the position starts at half size and '
+                 'is reviewed at 90 days before any top-up.')
+    return head + body
+
+
+def score_stock(ticker, row, cross_engine=None, **_ignored):
+    """Lone-stock fallback - scored at mid-rank. Prefer score_screener()."""
+    cross_engine = cross_engine or set()
+    grw = _num(row.get('Net Profit 3Y Growth %'))
+    peg = _num(row.get('PEG TTM'))
+    peg = peg if (peg is not None and peg > 0) else None
+    roe = _num(row.get('ROE Ann  %'))
+    pio = _num(row.get('Piotroski Score'))
+    return _build_decision(ticker, cross_engine,
+                           grw, 50.0, peg, 50.0, roe, 50.0, pio, 50.0)
 
 
 # ---- self-test / live run ----
 if __name__ == '__main__':
     import os
-    print('=' * 64)
-    print('ENGINE D COMPOUNDER CONVICTION SCORING - run on live D1 screener')
-    print('=' * 64)
+    print('=' * 66)
+    print('ENGINE D - COMPOUNDER CONVICTION (percentile-ranked) - live run')
+    print('=' * 66)
 
     csv_path = '/mnt/user-data/uploads/D1_Compound_May_16__2026.csv'
     if not os.path.exists(csv_path):
         csv_path = 'D1_Compound_May_16__2026.csv'
 
-    rows = load_screener(csv_path)
-    fresh = set(rows.keys())
-    decisions = score_screener(csv_path, fresh_tickers=fresh)
+    decisions = score_screener(csv_path)
+    buys  = [d for d in decisions if d.verdict == 'Buy']
+    watch = [d for d in decisions if d.verdict == 'Watch']
+    skip  = [d for d in decisions if d.verdict == 'Skip']
 
-    inc = [d for d in decisions if d.verdict == 'INCUBATE']
-    hf  = [d for d in decisions if d.verdict == 'HOLD-FIRE']
-    ps  = [d for d in decisions if d.verdict == 'PASS']
+    print(f'\nScored {len(decisions)} compounder stocks (ranked relative)')
+    print(f'  Buy: {len(buys)}   Watch: {len(watch)}   Skip: {len(skip)}')
 
-    print(f'\nScored {len(decisions)} compounder stocks')
-    print(f'  INCUBATE: {len(inc)}   HOLD-FIRE: {len(hf)}   PASS: {len(ps)}')
+    scores = [d.total_score() for d in decisions]
+    print(f'\nSCORE SPREAD: highest {max(scores):.1f} / lowest {min(scores):.1f}'
+          f' / {len(set(scores))} distinct values')
 
-    print('\n--- TOP 12 BY CONVICTION ---')
-    for d in decisions[:12]:
-        print(f'  {d.ticker:14} {d.verdict:10} {d.total_score()}/10')
+    print('\n--- ALL STOCKS BY CONVICTION ---')
+    for d in decisions:
+        print(f'  {d.ticker:14} {d.verdict:6} {d.total_score():4.1f}/10')
 
-    print('\n--- SAMPLE FULL REASON STRING (highest conviction) ---')
-    if decisions:
-        print(' ', decisions[0].reason_string())
+    print('\n--- TOP 3 PLAIN-ENGLISH SUMMARIES ---')
+    for d in decisions[:3]:
+        print(f'\n  [{d.ticker}]')
+        print(f'  {d.summary}')
 
-    print('\n' + '=' * 64)
-    print('Compounder conviction scoring complete. Multi-Engine signal')
-    print('scores 0 until B/C screeners are wired (10-point scale kept).')
-    print('=' * 64)
+    print('\n' + '=' * 66)
+    print('Percentile + sector-relative compounder scoring complete.')
+    print('=' * 66)

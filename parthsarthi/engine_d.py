@@ -28,7 +28,8 @@ import os
 from datetime import datetime
 
 from data_guard import guard
-from engine_d_conviction import load_screener, score_stock, sector_exposure
+from engine_d_conviction import (load_screener, score_stock,
+                                 score_screener, sector_exposure)
 from engine_d_incubation import begin_incubation, assess_incubation
 from engine_d_tiers import tier_for_months
 from engine_d_thesis import check_thesis
@@ -143,15 +144,19 @@ class EngineD:
         self._log(f'\n[5] CANDIDATES ({len(candidates)} not held/incubating):')
 
         incubate_now = []
+        # percentile ranking is relative to the whole screen
+        all_scored = score_screener(screener_csv, cross_engine=bc_tickers)
+        scored_by_tk = {d.ticker: d for d in all_scored}
         for tk in candidates:
-            d = score_stock(tk, rows[tk], bc_tickers, sector_pct,
-                            fresh_tickers={tk})
+            d = scored_by_tk.get(tk)
+            if d is None:
+                continue
             self.decisions.append(d)
-            if d.verdict == 'INCUBATE':
+            if d.verdict == 'Buy':
                 incubate_now.append((tk, d.total_score()))
 
         if incubate_now:
-            self._log(f'    {len(incubate_now)} candidate(s) cleared to '
+            self._log(f'    {len(incubate_now)} Buy candidate(s) cleared to '
                       f'begin incubation:')
             for tk, sc in sorted(incubate_now, key=lambda x: -x[1]):
                 # begin incubation at 50% of a notional target
@@ -160,7 +165,7 @@ class EngineD:
                 self._log(f'      {tk:13} conviction {sc}/10 -> '
                           f'INCUBATE-START (deploy 50%)')
         else:
-            self._log('    no candidates cleared for incubation this cycle')
+            self._log('    no Buy candidates cleared for incubation this cycle')
 
         # ---- Step 6: summary ----
         verdicts = {}

@@ -28,7 +28,8 @@ import os
 from datetime import datetime
 
 from data_guard import guard
-from engine_c_conviction import load_screener, score_stock, sector_exposure
+from engine_c_conviction import (load_screener, score_stock,
+                                 score_screener, sector_exposure)
 from engine_c_lifecycle import stage_for_holding
 from engine_c_booking import check_booking
 from engine_c_thesis import check_thesis
@@ -148,15 +149,19 @@ class EngineC:
         self._log(f'\n[4] CANDIDATES ({len(candidates)} not held):')
 
         deploys = []
+        # percentile ranking is relative to the whole screen
+        all_scored = score_screener(screener_csv, cross_engine=bd_tickers)
+        scored_by_tk = {d.ticker: d for d in all_scored}
         for tk in candidates:
-            d = score_stock(tk, rows[tk], bd_tickers, sector_pct,
-                            fresh_tickers={tk})
+            d = scored_by_tk.get(tk)
+            if d is None:
+                continue
             self.decisions.append(d)
-            if d.verdict == 'DEPLOY':
+            if d.verdict == 'Buy':
                 deploys.append((tk, d.total_score()))
 
         if deploys:
-            self._log(f'    {len(deploys)} DEPLOY candidate(s):')
+            self._log(f'    {len(deploys)} Buy candidate(s):')
             holdings_for_rank = [
                 {'ticker': p['ticker'], 'conviction': p.get('conviction', 7),
                  'stage': 'HELD'} for p in held_positions]
@@ -165,7 +170,7 @@ class EngineC:
                 self.decisions.append(rot)
                 self._log(f'      {tk:13} conviction {sc}/10 -> {rot.verdict}')
         else:
-            self._log('    no DEPLOY candidates this cycle')
+            self._log('    no Buy candidates this cycle')
 
         # ---- Step 5: summary ----
         verdicts = {}

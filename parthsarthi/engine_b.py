@@ -28,7 +28,8 @@ import os
 from datetime import datetime
 
 from data_guard import guard
-from engine_b_conviction import load_screener, score_stock, sector_exposure
+from engine_b_conviction import (load_screener, score_stock,
+                                 score_screener, sector_exposure)
 from engine_b_lifecycle import stage_for_candidate, stage_for_holding
 from engine_b_exits import check_exit, engine_a_regime
 from engine_b_profit import check_profit
@@ -135,23 +136,28 @@ class EngineB:
         self._log(f'\n[4] CANDIDATES ({len(candidates)} not held):')
 
         strikes = []
+        # percentile ranking is relative to the whole screen - score the
+        # entire screener once, then act on the candidates among them
+        all_scored = score_screener(screener_csv, cross_engine=cd_tickers)
+        scored_by_tk = {d.ticker: d for d in all_scored}
         for tk in candidates:
-            d = score_stock(tk, rows[tk], cd_tickers, sector_pct,
-                            fresh_tickers={tk})  # treated fresh in this demo
+            d = scored_by_tk.get(tk)
+            if d is None:
+                continue
             self.decisions.append(d)
-            if d.verdict == 'STRIKE':
+            if d.verdict == 'Buy':
                 if self.regime in ('EXIT-ALL', 'FREEZE'):
-                    self._log(f'  {tk:13} STRIKE {d.total_score()}/10 '
+                    self._log(f'  {tk:13} Buy {d.total_score():.1f}/10 '
                               f'- BLOCKED by regime {self.regime}')
                 else:
                     strikes.append((tk, d.total_score()))
 
         if strikes:
-            self._log(f'    {len(strikes)} STRIKE candidate(s) cleared to buy:')
+            self._log(f'    {len(strikes)} Buy candidate(s) cleared:')
             for tk, sc in sorted(strikes, key=lambda x: -x[1]):
                 self._log(f'      {tk:13} conviction {sc}/10')
         else:
-            self._log('    no STRIKE candidates cleared this cycle')
+            self._log('    no Buy candidates cleared this cycle')
 
         # ---- Step 5: summary ----
         verdicts = {}
