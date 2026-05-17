@@ -113,6 +113,26 @@ def _decision_card(d):
     """, unsafe_allow_html=True)
 
 
+def _audit_box(text):
+    """
+    Render an audit / reason string as a light, self-contained CARD
+    with wrapping text - not a dark, horizontally-scrolling code block.
+
+    The text keeps a monospace face (it is an auditable trace) but
+    wraps to the card width, so it never runs off the side of a phone
+    screen the way st.code() does.
+    """
+    safe = (str(text) if text is not None else '') \
+        .replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+    st.markdown(
+        f"<div style='background:#F1ECE0; border:1px solid #E5E0D5; "
+        f"border-radius:6px; padding:10px 13px; margin:2px 0 12px 0; "
+        f"font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; "
+        f"font-size:12px; line-height:1.55; color:#2A3340; "
+        f"white-space:pre-wrap; word-break:break-word;'>{safe}</div>",
+        unsafe_allow_html=True)
+
+
 def render():
     """Render the Decisions tab. Called by app.py."""
     st.header('Decisions')
@@ -177,10 +197,10 @@ def render():
                         f"padding:4px 12px 10px 12px;'>{d.summary}</div>",
                         unsafe_allow_html=True)
                     with st.expander('audit detail'):
-                        st.code(d.reason_string(), language=None)
+                        _audit_box(d.reason_string())
                 else:
                     with st.expander('reason string'):
-                        st.code(d.reason_string(), language=None)
+                        _audit_box(d.reason_string())
 
         with st.expander(f'All {len(decisions)} decisions for '
                          f'{engine_titles[eng_code]}'):
