@@ -198,31 +198,36 @@ def init_state():
 
 
 def admin_panel():
-    """The Admin tab - regime input and CSV upload."""
+    """The Admin tab - Engine A status (live), portfolio size, CSV upload."""
     st.header('Admin')
-    st.caption('Set the regime, upload the daily screeners, then go to '
-               'the Decisions tab to run the engines.')
+    st.caption('Engine A is read automatically from its scheduled run. '
+               'Set the portfolio size, upload the screeners, then open '
+               'the Decisions tab.')
     st.divider()
 
-    # ---- 1. Engine A regime ----
+    # ---- 1. Engine A - read live, not typed ----
     section_card('1.  Engine A Regime',
-                 'The macro score sets the equity budget and the gate.')
-    col1, col2 = st.columns(2)
-    with col1:
-        score = st.number_input('Engine A score (0-100)',
-                                 min_value=0, max_value=100,
-                                 value=st.session_state['engine_a_score'],
-                                 step=1)
-        st.session_state['engine_a_score'] = score
-    with col2:
-        portfolio = st.number_input('Total portfolio (Rs)',
-                                    min_value=0,
-                                    value=st.session_state['total_portfolio'],
-                                    step=10000)
-        st.session_state['total_portfolio'] = portfolio
+                 'Read automatically from the latest scheduled run.')
+    import engine_a_link
+    a = engine_a_link.load_engine_a()
+    st.session_state['engine_a_score'] = a['score']
+    st.session_state['engine_a_data'] = a
 
-    gate = ('EXIT-ALL' if score <= 20 else
-            'FREEZE' if score <= 30 else 'NORMAL')
+    c1, c2, c3 = st.columns(3)
+    c1.metric('Engine A score', f"{a['score']}/100")
+    c2.metric('Regime', a['regime'])
+    c3.metric('Operating gate', a['gate'])
+
+    if a['available']:
+        st.caption(f"Live - computed {a['computed_at']}. "
+                   f"Equity allocation {a['equity_pct']}%.")
+        if a['pending'] and a['pending'] > 0:
+            st.warning(f"{a['pending']} manual input(s) pending in Engine A "
+                       f"- the score is partial.")
+    else:
+        st.warning(a['note'])
+
+    gate = a['gate']
     if gate == 'NORMAL':
         st.success(f'Operating gate: {gate} - entries and exits permitted.')
     elif gate == 'FREEZE':
@@ -232,8 +237,19 @@ def admin_panel():
 
     st.divider()
 
-    # ---- 2. Screener upload ----
-    section_card('2.  Upload Screener CSVs',
+    # ---- 2. Portfolio size ----
+    section_card('2.  Portfolio Size',
+                 'The total capital the engines allocate across B, C, D and E.')
+    portfolio = st.number_input('Total portfolio (Rs)',
+                                min_value=0,
+                                value=st.session_state['total_portfolio'],
+                                step=10000)
+    st.session_state['total_portfolio'] = portfolio
+
+    st.divider()
+
+    # ---- 3. Screener upload ----
+    section_card('3.  Upload Screener CSVs',
                  'Upload all three at once. Files are matched to engines '
                  'by name - keep the Mom / C2 / D1 prefixes.')
 
@@ -263,8 +279,8 @@ def admin_panel():
 
     st.divider()
 
-    # ---- 3. Status ----
-    section_card('3.  Status')
+    # ---- 4. Status ----
+    section_card('4.  Status')
     uploaded = sum(1 for k in ['screener_b', 'screener_c', 'screener_d']
                    if st.session_state[k] is not None)
     st.write(f'**{uploaded} of 3** screeners loaded.')
@@ -277,14 +293,56 @@ def admin_panel():
         st.info('Upload the three screener CSVs above to begin.')
 
 
+def engine_a_panel():
+    """The Engine A tab - the macro regime score and its 8 components."""
+    st.header('Engine A - Macro Regime')
+    st.caption('The Director. Reads the macro picture and sets how much '
+               'capital goes to equity. Updated on a schedule.')
+    st.divider()
+
+    import engine_a_link
+    a = engine_a_link.load_engine_a()
+
+    if not a['available']:
+        st.warning(a['note'])
+        return
+
+    # headline
+    c1, c2, c3 = st.columns(3)
+    c1.metric('Score', f"{a['score']}/100")
+    c2.metric('Regime', a['regime'])
+    c3.metric('Equity allocation', f"{a['equity_pct']}%")
+    st.caption(f"Computed {a['computed_at']}.  {a['guidance']}")
+
+    st.divider()
+
+    # the 8 components
+    section_card('Component Breakdown',
+                 'The eight macro components behind the score.')
+    comps = a['components']
+    if comps:
+        rows = []
+        for key, c in comps.items():
+            rows.append({
+                'Component': c.get('name', key),
+                'Score': f"{c.get('score', 0)} / {c.get('weight', 0)}",
+                'Strength': f"{c.get('pct_of_max_available', 0):.0f}%",
+            })
+        st.dataframe(rows, use_container_width=True, hide_index=True)
+        st.caption('Each component contributes to the 0-100 score. '
+                   'Strength shows how much of that component was earned.')
+    else:
+        st.info('Component detail not available in the current data.')
+
+
 def main():
     setup_page()
     init_state()
     brand_header()
 
     tab = st.sidebar.radio('Navigate',
-                           ['Admin', 'Decisions', 'Portfolio',
-                            'Journal', 'Public'])
+                           ['Admin', 'Engine A', 'Engine A Inputs',
+                            'Decisions', 'Portfolio', 'Journal', 'Public'])
     st.sidebar.divider()
     st.sidebar.caption('Parthsarthi Capital')
     st.sidebar.caption('Educational research framework.')
@@ -292,6 +350,11 @@ def main():
 
     if tab == 'Admin':
         admin_panel()
+    elif tab == 'Engine A':
+        engine_a_panel()
+    elif tab == 'Engine A Inputs':
+        import view_engine_a_inputs
+        view_engine_a_inputs.render()
     elif tab == 'Decisions':
         import view_decisions
         view_decisions.render()

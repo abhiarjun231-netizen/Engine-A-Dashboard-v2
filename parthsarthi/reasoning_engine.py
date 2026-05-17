@@ -53,6 +53,8 @@ class Decision:
         self.facts = []                 # list of (label, value) for trigger decisions
         self.margin = None              # (description, value)
         self.counterfactual = None      # str
+        self.summary = None             # plain-English narrative (for display)
+        self.flags = []                 # extra notes, e.g. cross-engine
         self.timestamp = datetime.now().isoformat(timespec='seconds')
 
     # ---- builders ----
@@ -70,6 +72,16 @@ class Decision:
 
     def set_counterfactual(self, text):
         self.counterfactual = text
+        return self
+
+    def set_summary(self, text):
+        """Attach a plain-English narrative for the dashboard to display."""
+        self.summary = text
+        return self
+
+    def add_flag(self, text):
+        """Attach an extra note (e.g. a cross-engine qualification)."""
+        self.flags.append(text)
         return self
 
     # ---- validation ----
@@ -149,6 +161,8 @@ class Decision:
             'margin': {'description': self.margin[0], 'value': self.margin[1]}
                        if self.margin else None,
             'counterfactual': self.counterfactual,
+            'summary': self.summary,
+            'flags': list(self.flags),
             'reason_string': self.reason_string(),
         }
 
